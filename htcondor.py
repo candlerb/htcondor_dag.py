@@ -1,8 +1,17 @@
 #!/usr/bin/env python
 
-# Brian Candler 2013. This code is released under the GPL version 2.
+# htcondor.py: distributed python using a HTCondor DAG
+# Copyright (C) 2013 Brian Candler
 #
-# A module for generating a htcondor DAG of python function calls.
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# version 2 as published by the Free Software Foundation.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
 # Heavily borrows from http://flask.pocoo.org/snippets/73/ which is
 # in the public domain
 #
