@@ -42,61 +42,85 @@ def output_files(filename, processes=None):
     return [re.sub(r'\$\(process\)',str(p),filename,flags=re.IGNORECASE)
             for p in range(processes or 1)]
 
-class Job(object):
-    def __init__(self, id, func, submit="htcondor.sub", filebase="tmp", dag=sys.stdout,
-                 input=True, output=True, error=True,
-                 processes=None, category=None, **vars):
+class Node(object):
+    def __init__(self, id, filename):
         self.id = id
-        self.func = func
-        self.submit = submit
-        self.dag = dag
-        self.processes = processes
-        if input is True:
-            input = "%s.%s.in" % (filebase, id)
-        if output is True:
-            if processes is None:
-                output = "%s.%s.out" % (filebase, id)
-            else:
-                output = "%s.%s.$(process).out" % (filebase, id)
-        if error is True:
-            if processes is None:
-                error = "%s.%s.err" % (filebase, id)
-            else:
-                error = "%s.%s.$(process).err" % (filebase, id)
-        self.input = input
-        self.output = output
-        self.error = error
-        print("\nJOB %s %s" % (self, self.submit), file=self.dag)
-        self.category(category)
-        self.vars(input=input, output=output, error=error,
-                  processes=processes, **vars)
+        self.filename = filename
+        self.parents = []
+        self.children = []
     
     def __str__(self):
         return self.id
+
+    def parent(self, *other):
+        self.parents.extend(other)
+        return self
+    
+    def child(self, *other):
+        self.children.extend(other)
+        return self
+
+    def write_dag_entry(self, dag):
+        if self.parents:
+            print("PARENT %s CHILD %s" %
+                  (" ".join([str(o) for o in self.parents]), self), file=dag)
+        if self.children:
+            print("PARENT %s CHILD %s" %
+                  (self, " ".join([str(o) for o in self.children])), file=dag)
+        print("", file=dag)
+    
+class Job(Node):
+    def __init__(self, id, submit="htcondor.sub", func=None,
+                 category=None, priority=None, retry=None,
+                 input=True, output=True, error=True, processes=None,
+                 filebase="tmp", **vars):
+        super(Job, self).__init__(id=id, filename=submit)
+        self.func = func
+        self.category = category
+        self.priority = priority
+        self.retry = retry
+        self.input = input
+        self.output = output
+        self.error = error
+        self.processes = processes
+        if input is True:
+            self.input = "%s.job.%s.in" % (filebase, id)
+        if output is True:
+            if self.processes is None:
+                self.output = "%s.job.%s.out" % (filebase, id)
+            else:
+                self.output = "%s.job.%s.$(process).out" % (filebase, id)
+        if error is True:
+            if self.processes is None:
+                self.error = "%s.job.%s.err" % (filebase, id)
+            else:
+                self.error = "%s.job.%s.$(process).err" % (filebase, id)
+        self.vars = vars
     
     def __repr__(self):
         return "Job %s >%s" % (self.id, self.output)
     
-    def queue(self, *args, **kwargs):
-        """
-        The primary function: write out a JOB to be executed by htcondor.
-        If its arguments are other jobs, add the dependencies.
-        """
-        _curr_job_parents.clear()
-        with open(self.input, 'wb') as f:
-            pickle.dump({'func':self.func, 'args':args, 'kwargs':kwargs}, f, pickle_protocol)
-        if _curr_job_parents:
-            job_files = []
-            for j in _curr_job_parents:
-                job_files.extend(output_files(j.output, j.processes))
-            self.vars(job_files=",".join(job_files))
-            self.parent(*_curr_job_parents)
-        return self
+    def write_dag_entry(self, dag):
+        print("JOB %s %s" % (self, self.filename), file=dag)
+        if self.category is not None:
+            print("CATEGORY %s %s" % (self, self.category), file=dag)
+        if self.priority is not None:
+            print("PRIORITY %s %d" % (self, self.priority), file=dag)
+        if self.retry is not None:
+            print("RETRY %s %d" % (self, self.retry), file=dag)
+        self.write_vars(dag, input=self.input, output=self.output, error=self.error,
+                        processes=self.processes, **self.vars)
+        super(Job, self).write_dag_entry(dag)
+        if self.input and not os.path.exists(self.input):
+            print("WARNING: %s: input file %s does not exist" % (self, self.input))
 
-    def vars(self, **kwargs):
+    def set_vars(self, **v):
+        self.vars.update(v)
+    
+    def write_vars(self, dag, **kwargs):
         """
         Output macros which are to be passed to this job submission: e.g.
-            myjob.vars(foo="bar", bar="qux")
+            myjob.set_vars(foo="bar", bar="qux")
         """
         res = ''
         for (k,v) in sorted(kwargs.iteritems()):
@@ -119,38 +143,25 @@ class Job(object):
                 #v = " ".join(["'%s'" % y.replace("'","''") for y in v])
                 #v = '"%s"' % v
             v = str(v).replace('\\','\\\\').replace('"','\\"')
-            res = '%s %s="%s"' % (res, k, v)
+            res += ' %s="%s"' % (k, v)
         if res:
-            print('VARS %s%s' % (self, res), file=self.dag)
+            print('VARS %s%s' % (self, res), file=dag)
         return self
 
-    def category(self, category):
+    def queue(self, *args, **kwargs):
         """
-        Set the category for this job, so you can configure MAXJOBS
-        instances of each job category to run concurrently
+        The primary function: write out a JOB to be executed by htcondor.
+        If its arguments are other jobs, add the dependencies.
         """
-        if category is not None:
-            print("CATEGORY %s %s" % (self, category), file=self.dag)
-        return self
-
-    def parent(self, *other):
-        """
-        List other jobs which are parents (predecessors) of this one.
-        You may pass either Job instances or strings containing jobids.
-        """
-        if other:
-            print("PARENT %s CHILD %s" %
-                  (" ".join([str(o) for o in other]), self), file=self.dag)
-        return self
-    
-    def child(self, *other):
-        """
-        List other jobs which are children of this one,
-        You may pass either Job instances or strings containing jobids.
-        """
-        if other:
-            print("PARENT %s CHILD %s" %
-                  (self, " ".join([str(o) for o in other])), file=self.dag)
+        _curr_job_parents.clear()
+        with open(self.input, 'wb') as f:
+            pickle.dump({'func':self.func, 'args':args, 'kwargs':kwargs}, f, pickle_protocol)
+        if _curr_job_parents:
+            job_files = []
+            for j in _curr_job_parents:
+                job_files.extend(output_files(j.output, j.processes))
+            self.set_vars(job_files=",".join(job_files))
+            self.parent(*_curr_job_parents)
         return self
 
     def __reduce__(self):
@@ -162,16 +173,40 @@ class Job(object):
         _curr_job_parents.add(self)
         return (read_job_output, (self.id, self.output, self.processes))
 
-class Dag(object):
+class Dag(Node):
     """
     A Dag is a collection of jobs. It also allocates job ids, and holds
     default options common to every job (i.e. acts as a job factory).
     """
-    def __init__(self, **defaults):
+    def __init__(self, id, filename, dir=None, **defaults):
+        super(Dag, self).__init__(id=id, filename=filename)
+        self.dir = dir
         self.defaults = defaults
-        self.jobs = []
+        self.nodes = []
         self.last_id = {}           # id_prefix => sequence number
-        self.job = self.job_vars()  # simple decorator
+        self.maxjobs = {}           # category => limit
+        self.job = self.job_with()  # simple decorator
+
+    def write(self):
+        with open(self.filename, "w") as f:
+            for node in self.nodes:
+                node.write_dag_entry(f)
+            for (k,v) in self.maxjobs.iteritems():
+                print("MAXJOBS %s %d" % (k,v), file=f)
+
+    def write_dag_entry(self, dag):
+        self.write()
+        if self.dir:
+            print("SPLICE %s %s DIR %s" % (self.id, self.filename, self.dir), file=dag)
+        else:
+            print("SPLICE %s %s" % (self.id, self.filename), file=dag)
+        super(Dag, self).write_dag_entry(dag)
+
+    def add_node(self, node):
+        """
+        Add a node - could be a Job or a sub-Dag
+        """
+        self.nodes.append(node)
 
     def create_job(self, id=None, id_prefix="", **options):
         if id is None:
@@ -183,14 +218,14 @@ class Dag(object):
         opt = self.defaults.copy()
         opt.update(options)
         job = Job(id=id, **opt)
-        self.jobs.append(job)
+        self.add_node(job)
         return job
     
-    def job_vars(self, **options):
+    def job_with(self, **options):
         """
         This is a parameterised decorator.
         
-        @dag.job_vars(request_memory=100)
+        @dag.job_with(request_memory=100)
         def myjob(args):
             ....
         
@@ -208,16 +243,20 @@ class Dag(object):
             return func
         return decorate
 
-    def maxjobs(self, category, n):
-        print("MAXJOBS %s %d" % (category, n),
-              file=self.defaults.get('dag', sys.stdout))
-
 # Most users need only a single DAG
-dag = Dag(filebase=re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0])) + '.job',
-          executable=sys.argv[0])
+base = re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))
+dag = Dag(id=base, filename="%s.dag" % base, filebase=base, executable=sys.argv[0])
 job = dag.job
-job_vars = dag.job_vars
+job_with = dag.job_with
 defaults = dag.defaults
+
+def write_dag():
+    """
+    Write out the default dag
+    """
+    if dag.nodes:
+        dag.write()
+        print("Written DAG file to %s" % dag.filename, file=sys.stderr)
 
 class Ad(object):
     """An object which represents a run-time value of a classAd attribute.
@@ -332,6 +371,8 @@ def autorun(*args, **kwargs):
     elif 'UNPICKLE' in os.environ:
         print(repr(pickle.load(open(os.environ['UNPICKLE'], 'rb'))))
         sys.exit(0)
+    import atexit
+    atexit.register(write_dag)
 
 # Another option is to set Executable = htcondor.py in submit file.
 # For this to work, when you write the dag file the functions must have

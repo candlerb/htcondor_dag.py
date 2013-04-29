@@ -29,7 +29,7 @@ Make the script executable, and run it to create the DAG (this also creates
 the input files to each job):
 
 ~~~
-./mytest.py >mytest.dag
+./mytest.py
 ~~~
 
 You will need to create a minimal `htcondor.sub` like this:
@@ -65,7 +65,7 @@ If your python app is split into modules then you can transfer them all
 together in a zipfile:
 
 ~~~
-transfer_input_files = mylib.zip,$(job_files)
+transfer_input_files = htcondor.py,mylib.zip,$(job_files)
 environment = "PYTHONPATH=mylib.zip"
 ~~~
 
@@ -144,14 +144,14 @@ Jobs can be assigned to categories, and you can limit the number of
 jobs which will run concurrently in a particular category.
 
 ~~~
-from htcondor import job_vars, autorun, dag
+from htcondor import job_with, autorun, dag
 
-@job_vars(category="adder")
+@job_with(category="adder")
 def adder(a, b):
     return a + b
 
 autorun()
-dag.maxjobs("adder", 3)
+dag.maxjobs["adder"] = 3
 
 adder.queue(1, 2)
 ... etc
@@ -166,7 +166,7 @@ Per-job options
 On all instances of a job:
 
 ~~~
-@job_vars(request_memory=100, submit='foobar.sub')
+@job_with(request_memory=100, submit='foobar.sub')
 def myjob(...):
     ....
 
@@ -177,7 +177,7 @@ To suppress generation of output from a job (e.g. one which writes
 all its output to a shared filesystem)
 
 ~~~
-@job_vars(output=None)
+@job_with(output=None)
 def myjob(...):
     ....
 ~~~
@@ -199,9 +199,10 @@ To set default VARS for every job:
 
 (alternatively, you can edit the .sub file to include these parameters)
 
-To write the DAG to a file instead of stdout:
+To write the DAG to a different file:
 
-    defaults['dag'] = open('mytest.dag','w')
+    from htcondor import dag
+    dag.filename = "foo.dag"
 
 Returning python values (experimental)
 ======================================
@@ -263,22 +264,14 @@ for i in range(10):
     print_sum.queue(i, 5)
 ~~~
 
-(TODO: implement splicing of subDAGs)
-
 TODO
 ====
 
-* Ability to append to job_files
-* Support adding non-python job instances to the DAG
-* Make DAG remember its own filename/filehandle, for easier setting of
-  DAG-level options like MAXJOBS
-* Write jobs at end instead of as we go (to make it easier to override
-  options like input/output)
-* Write DAG to a file instead of stdout by default; output instructions
-  on how to run it on sys.stderr
+* Try to show the DAG node name or the function name instead of the script
+  name in condor_q output
 * ? Collect all job arguments into a single file, to minimise the number
   of .in files we generate (then we have to select the job name at
-  runtime, e.g. as a classAd attr or in arguments)
-* Splicing sub-DAGs
+  runtime, e.g. as a classAd attr or in arguments). But we will still end
+  up with separate .err files per job
 * Pre and Post scripts
 * Test suite

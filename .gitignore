@@ -1,2 +1,8 @@
 *~
 *.pyc
+*.dag
+*.in
+*.out
+*.err
+*.condor.sub
+*.log
