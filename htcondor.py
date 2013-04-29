@@ -178,16 +178,18 @@ class Dag(Node):
     A Dag is a collection of jobs. It also allocates job ids, and holds
     default options common to every job (i.e. acts as a job factory).
     """
-    def __init__(self, id, filename, dir=None, **defaults):
+    def __init__(self, id, filename=None, dir=None, **defaults):
         super(Dag, self).__init__(id=id, filename=filename)
         self.dir = dir
-        self.defaults = defaults
+        self.defaults = defaults    # used for jobs we create
         self.nodes = []
         self.last_id = {}           # id_prefix => sequence number
         self.maxjobs = {}           # category => limit
         self.job = self.job_with()  # simple decorator
 
     def write(self):
+        if self.filename is None:
+            self.filename = '%s.dag' % defaults['filebase']
         with open(self.filename, "w") as f:
             for node in self.nodes:
                 node.write_dag_entry(f)
@@ -244,8 +246,8 @@ class Dag(Node):
         return decorate
 
 # Most users need only a single DAG
-base = re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))
-dag = Dag(id=base, filename="%s.dag" % base, filebase=base, executable=sys.argv[0])
+dag = Dag(id='top', filebase=re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0])),
+          executable=sys.argv[0])
 job = dag.job
 job_with = dag.job_with
 defaults = dag.defaults
