@@ -371,7 +371,8 @@ def autorun(*args, **kwargs):
         run(*args, **kwargs)
         sys.exit(0)
     elif 'UNPICKLE' in os.environ:
-        print(repr(pickle.load(open(os.environ['UNPICKLE'], 'rb'))))
+        import pprint
+        pprint.pprint(pickle.load(open(os.environ['UNPICKLE'], 'rb')))
         sys.exit(0)
     import atexit
     atexit.register(write_dag)
