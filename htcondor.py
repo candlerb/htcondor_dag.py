@@ -14,12 +14,6 @@
 
 # Heavily borrows from http://flask.pocoo.org/snippets/73/ which is
 # in the public domain
-#
-# At minimum you will need a htcondor.sub which looks like this:
-#
-#   universe = vanilla
-#   transfer_input_files = $(job_files)
-#   queue $(processes)
 
 from __future__ import print_function
 import sys
@@ -38,18 +32,108 @@ pickle_protocol = 0 # (or for binary) pickle.HIGHEST_PROTOCOL
 
 _curr_job_parents = sets.Set()
 
-def output_files(filename, processes=None):
-    return [re.sub(r'\$\(process\)',str(p),filename,flags=re.IGNORECASE)
+def output_files(id, filename, processes=None):
+    """
+    Return a list of filenames of all the outputs for a job (cluster)
+    """
+    base = re.sub(r'\$\(jobname\)',str(id),filename,flags=re.IGNORECASE)
+    return [re.sub(r'\$\(process\)',str(p),base,flags=re.IGNORECASE)
             for p in range(processes or 1)]
 
-class Node(object):
-    def __init__(self, id, filename):
-        self.id = id
+class Input(object):
+    """
+    An object which writes out input arguments for one or more jobs
+    """
+    def __init__(self, filename):
         self.filename = filename
+        self.data = {}           # {"jobname":(func,args,kwargs)}
+        self.written = False
+    
+    def __repr__(self):
+        return "Input(filename=%s,data=%s)" % (repr(self.filename),repr(self.data))
+    
+    def __str__(self):
+        return self.filename
+
+    def __unicode__(self):
+        return self.filename
+
+    def write(self):
+        if self.data and not self.written:
+            self.written = True
+            with open(self.filename, "wb") as f:
+                pickle.dump(self.data, f, pickle_protocol)  # TODO: gzip
+    
+class Submit(object):
+    """
+    An object which writes out a submit file
+    """
+    DEFAULTS = {
+        'universe': 'vanilla',
+        'executable': sys.argv[0],
+        'transfer_input_files': 'htcondor.py,$(job_files)'
+    }
+    
+    def __init__(self, filename, **vars):
+        self.filename = filename
+        self.vars = vars
+        self.written = False
+        for (k,v) in Submit.DEFAULTS.iteritems():
+            if not k in vars:
+                vars[k] = v
+
+    def __repr__(self):
+        return "Submit(filename=%s,...)" % repr(self.filename)
+
+    def __str__(self):
+        return self.filename
+
+    def __unicode__(self):
+        return self.filename
+
+    def var(self, **v):
+        """Update one or more variables"""
+        self.vars.update(v)
+        return self
+
+    def write(self):
+        if not self.written:
+            self.written = True
+            if 'input' in self.vars and hasattr(self.vars['input'], 'write'):
+                self.vars['input'].write()
+            with open(self.filename, "w") as f:
+                for (k,v) in sorted(self.vars.iteritems()):
+                    if v is None:
+                        continue
+                    elif hasattr(v, 'iteritems'):
+                        # e.g. environment={"PATH":"/usr/bin","HOME":"/home/job"}
+                        v = " ".join(["%s='%s'" % (x,str(y).replace("'","''"))
+                                      for (x,y) in v.iteritems()])
+                        v = '"%s"' % v.replace('"','""')
+                    elif type(v) is list:
+                        # e.g. arguments=["foo", "bar", "baz"]
+                        v = " ".join(["'%s'" % str(y).replace("'","''") for y in v])
+                        v = '"%s"' % v.replace('"','""')
+                    print("%s = %s" % (k,v), file=f)
+                print("queue $(processes)", file=f)
+
+class Node(object):
+    """
+    Parent class for nodes within a DAG (jobs and sub-DAGs)
+    """
+    def __init__(self, id, comment=None):
+        self.id = id
+        self.comment = comment
         self.parents = []
         self.children = []
     
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, repr(self.id))
+
     def __str__(self):
+        return self.id
+
+    def __unicode__(self):
         return self.id
 
     def parent(self, *other):
@@ -60,70 +144,71 @@ class Node(object):
         self.children.extend(other)
         return self
 
-    def write_dag_entry(self, dag):
+    def write_dag_comment(self, file):
+        print("", file=file)
+        if self.comment:
+            print(re.sub(r'^', '# ', self.comment, flags=re.MULTILINE), file=file)
+
+    def write_dag_entry(self, file):
         if self.parents:
             print("PARENT %s CHILD %s" %
-                  (" ".join([str(o) for o in self.parents]), self), file=dag)
+                  (" ".join([str(o) for o in self.parents]), self), file=file)
         if self.children:
             print("PARENT %s CHILD %s" %
-                  (self, " ".join([str(o) for o in self.children])), file=dag)
-        print("", file=dag)
+                  (self, " ".join([str(o) for o in self.children])), file=file)
     
 class Job(Node):
-    def __init__(self, id, submit="htcondor.sub", func=None,
-                 category=None, priority=None, retry=None,
-                 input=True, output=True, error=True, processes=None,
-                 filebase="tmp", **vars):
-        super(Job, self).__init__(id=id, filename=submit)
-        self.func = func
+    """
+    An instance of a job within a DAG
+    """
+    def __init__(self, id, submit="htcondor.sub", comment=None,
+                 category=None, priority=None, retry=None, **vars):
+        super(Job, self).__init__(id=id, comment=comment)
+        self.submit = submit
         self.category = category
         self.priority = priority
         self.retry = retry
-        self.input = input
-        self.output = output
-        self.error = error
-        self.processes = processes
-        if input is True:
-            self.input = "%s.job.%s.in" % (filebase, id)
-        if output is True:
-            if self.processes is None:
-                self.output = "%s.job.%s.out" % (filebase, id)
-            else:
-                self.output = "%s.job.%s.$(process).out" % (filebase, id)
-        if error is True:
-            if self.processes is None:
-                self.error = "%s.job.%s.err" % (filebase, id)
-            else:
-                self.error = "%s.job.%s.$(process).err" % (filebase, id)
         self.vars = vars
     
-    def __repr__(self):
-        return "Job %s >%s" % (self.id, self.output)
+    def write(self):
+        if hasattr(self.submit, 'write'):
+            self.submit.write()
+        if 'input' in self.vars and hasattr(self.vars['input'], 'write'):
+            self.vars['input'].write()
     
-    def write_dag_entry(self, dag):
-        print("JOB %s %s" % (self, self.filename), file=dag)
+    def write_dag_entry(self, file):
+        self.write_dag_comment(file)
+        print("JOB %s %s" % (self, self.submit), file=file)
         if self.category is not None:
-            print("CATEGORY %s %s" % (self, self.category), file=dag)
+            print("CATEGORY %s %s" % (self, self.category), file=file)
         if self.priority is not None:
-            print("PRIORITY %s %d" % (self, self.priority), file=dag)
+            print("PRIORITY %s %d" % (self, self.priority), file=file)
         if self.retry is not None:
-            print("RETRY %s %d" % (self, self.retry), file=dag)
-        self.write_vars(dag, input=self.input, output=self.output, error=self.error,
-                        processes=self.processes, **self.vars)
-        super(Job, self).write_dag_entry(dag)
-        if self.input and not os.path.exists(self.input):
-            print("WARNING: %s: input file %s does not exist" % (self, self.input))
+            print("RETRY %s %d" % (self, self.retry), file=file)
+        self.write_vars(file, self.vars)
+        super(Job, self).write_dag_entry(file)
 
-    def set_vars(self, **v):
+    def var(self, **v):
         self.vars.update(v)
-    
-    def write_vars(self, dag, **kwargs):
+        return self
+
+    def attr(self, varname):
+        if varname in self.vars:
+            return self.vars[varname]
+        elif self.submit and hasattr(self.submit,'vars') and varname in self.submit.vars:
+            return self.submit.vars[varname]
+        else:
+            raise KeyError("'%s' not present in job %s" % (varname, self))
+
+    def write_vars(self, file, vars):
         """
         Output macros which are to be passed to this job submission: e.g.
-            myjob.set_vars(foo="bar", bar="qux")
+            myjob.var(foo="bar", bar="qux")
         """
         res = ''
-        for (k,v) in sorted(kwargs.iteritems()):
+        if 'jobname' not in vars:
+            res = ' jobname="%s"' % self   # or jobname="$(JOB)" but that includes dag splice path
+        for (k,v) in sorted(vars.iteritems()):
             if re.match('queue', k, flags=re.IGNORECASE):
                 raise ValueError('macroname must not start with "queue"')
             elif v is None:
@@ -133,35 +218,17 @@ class Job(Node):
                 v = " ".join(["%s=%s" % (x,re.sub("[ ']", '_', y))
                               for (x,y) in v.iteritems()])
                 # Not yet permitted by DAGMAN:
-                #v = " ".join(["%s='%s'" % (x,y.replace("'","''")
+                #v = " ".join(["%s='%s'" % (x,y.replace("'","''"))
                 #              for (x,y) in v.iteritems()])
-                #v = '"%s"' % v
             elif type(v) is list:
                 # e.g. arguments=["foo", "bar", "baz"]
                 v = " ".join([re.sub("[ ']", '_', y) for y in v])
                 # Not yet permitted by DAGMAN:
                 #v = " ".join(["'%s'" % y.replace("'","''") for y in v])
-                #v = '"%s"' % v
             v = str(v).replace('\\','\\\\').replace('"','\\"')
             res += ' %s="%s"' % (k, v)
         if res:
-            print('VARS %s%s' % (self, res), file=dag)
-        return self
-
-    def queue(self, *args, **kwargs):
-        """
-        The primary function: write out a JOB to be executed by htcondor.
-        If its arguments are other jobs, add the dependencies.
-        """
-        _curr_job_parents.clear()
-        with open(self.input, 'wb') as f:
-            pickle.dump({'func':self.func, 'args':args, 'kwargs':kwargs}, f, pickle_protocol)
-        if _curr_job_parents:
-            job_files = []
-            for j in _curr_job_parents:
-                job_files.extend(output_files(j.output, j.processes))
-            self.set_vars(job_files=",".join(job_files))
-            self.parent(*_curr_job_parents)
+            print('VARS %s%s' % (self, res), file=file)
         return self
 
     def __reduce__(self):
@@ -171,92 +238,167 @@ class Job(Node):
         parents to the job currently being written.
         """
         _curr_job_parents.add(self)
-        return (read_job_output, (self.id, self.output, self.processes))
+        return (read_job_output,
+                (self.id, self.attr('output'), self.vars.get('processes')))
 
 class Dag(Node):
     """
-    A Dag is a collection of jobs. It also allocates job ids, and holds
-    default options common to every job (i.e. acts as a job factory).
+    A Dag is a collection of nodes (jobs or sub-dags). It also allocates
+    node ids.
     """
-    def __init__(self, id, filename=None, dir=None, **defaults):
-        super(Dag, self).__init__(id=id, filename=filename)
+    def __init__(self, id, filename, comment=None, dir=None, maxjobs = {}):
+        super(Dag, self).__init__(id=id, comment=comment)
+        self.filename = filename
         self.dir = dir
-        self.defaults = defaults    # used for jobs we create
+        self.maxjobs = {}           # category => limit
         self.nodes = []
         self.last_id = {}           # id_prefix => sequence number
-        self.maxjobs = {}           # category => limit
-        self.job = self.job_with()  # simple decorator
+        self.written = False
+
+    def next_id(self, id_prefix=""):
+        """
+        Allocate the next id for a given prefix
+        """
+        if id_prefix in self.last_id:
+            self.last_id[id_prefix] += 1
+        else:
+            self.last_id[id_prefix] = 0
+        return "%s%d" % (id_prefix, self.last_id[id_prefix])
 
     def write(self):
-        if self.filename is None:
-            self.filename = '%s.dag' % defaults['filebase']
-        with open(self.filename, "w") as f:
-            for node in self.nodes:
-                node.write_dag_entry(f)
-            for (k,v) in self.maxjobs.iteritems():
-                print("MAXJOBS %s %d" % (k,v), file=f)
+        """
+        Write out the DAG. Will recursively write out all its jobs
+        and sub-DAGs and their input/submit files.
+        """
+        if not self.written:
+            self.written = True
+            with open(self.filename, "w") as f:
+                for node in self.nodes:
+                    node.write()
+                    node.write_dag_entry(f)
+                for (k,v) in self.maxjobs.iteritems():
+                    print("MAXJOBS %s %d" % (k,v), file=f)
 
-    def write_dag_entry(self, dag):
-        self.write()
+    def write_dag_entry(self, file):
+        self.write_dag_comment(file)
         if self.dir:
-            print("SPLICE %s %s DIR %s" % (self.id, self.filename, self.dir), file=dag)
+            print("SPLICE %s %s DIR %s" % (self.id, self.filename, self.dir), file=file)
         else:
-            print("SPLICE %s %s" % (self.id, self.filename), file=dag)
-        super(Dag, self).write_dag_entry(dag)
+            print("SPLICE %s %s" % (self.id, self.filename), file=file)
+        super(Dag, self).write_dag_entry(file)
 
-    def add_node(self, node):
-        """
-        Add a node - could be a Job or a sub-Dag
-        """
-        self.nodes.append(node)
-
-    def create_job(self, id=None, id_prefix="", **options):
-        if id is None:
-            if id_prefix in self.last_id:
-                self.last_id[id_prefix] += 1
-            else:
-                self.last_id[id_prefix] = 0
-            id = "%s%d" % (id_prefix, self.last_id[id_prefix])
-        opt = self.defaults.copy()
-        opt.update(options)
-        job = Job(id=id, **opt)
-        self.add_node(job)
-        return job
+    def filebase(self):
+        return re.sub(r'\.dag$', '', self.filename)
     
-    def job_with(self, **options):
+    def new_node(self, cls, id=None, id_prefix="", **node_options):
+        if id is None:
+            id = self.next_id(id_prefix)
+        node = cls(id=id, **node_options)
+        self.nodes.append(node)
+        return node
+
+    def new_job(self, id=None, submit='htcondor.sub', **options):
         """
-        This is a parameterised decorator.
-        
-        @dag.job_with(request_memory=100)
-        def myjob(args):
-            ....
-        
-        myjob.queue(...)
+        Create a job object and add it to this DAG. Pass either
+        id or id_prefix; the latter will allocate an id sequentially.
         """
-        def decorate(func):
+        return self.new_node(Job, id=id, submit=submit, **options)
+
+    def new_dag(self, id, filename, **options):
+        """
+        Create a sub-DAG within this DAG (experimental)
+        """
+        return self.new_node(Dag, id=id, filename=filename, **options)
+
+    def job(self, func=None, name=None, input=True, output=True, error=True,
+            submit=True, category=None, priority=None, retry=None, **vars):
+        """
+        Decorate a function so that func.queue(...) creates a condor job.
+        This is the core functionality of this library.
+        
+        # case 1: decorator with args
+        @job(request_memory=1024)
+        def myfunc(args):
+           ...
+
+        # case 2: decorator without args
+        @job
+        def myfunc(args):
+           ...
+        
+        # case 3: myfunc already defined
+        @job(myfunc)
+
+        # case 4: myfunc already defined
+        @job(myfunc, request_memory=1024)
+
+        Note: unless you pass input=<obj> or submit=<obj>, a new input
+        file and submit file respectively will be created. However
+        they will be shared between instances if you queue the
+        same function multiple times.
+        
+        Pass output=None or error=None if you wish to suppress generation
+        of the stdout and stderr files.
+        """
+        def decorate(f):
+            _input = input
+            _output = output
+            _error = error
+            _submit = submit
+            filebase = "%s.%s" % (dag.filebase(), name or f.__name__)
+            if _input is True:
+                _input = Input(filebase+".in")
+            if _output is True:
+                _output="%s.$(jobname).$(process).out" % dag.filebase()
+            if _error is True:
+                _error="%s.$(jobname).$(process).err" % dag.filebase()
+            if _submit is True:
+                _submit = Submit(filename=filebase+".sub", input=_input,
+                                 output=_output, error=_error, **vars)
+            f.dag = self
+            f.input = _input
+            f.submit = _submit
             def queue(*args, **kwargs):
-                return self.create_job(func=func, **options).queue(*args, **kwargs)
-            def job(**opt):
-                o = options.copy()
-                o.update(opt)
-                return self.create_job(func=func, **o)
-            func.queue = queue
-            func.job = job
-            return func
-        return decorate
+                job = f.dag.new_job(
+                    id_prefix=f.__name__,
+                    submit=f.submit,
+                    category=category,
+                    priority=priority,
+                    retry=retry
+                )
+                # Calculate dependencies
+                _curr_job_parents.clear()
+                pickle.dumps((args, kwargs), protocol=pickle_protocol)
+                if _curr_job_parents:
+                    job.parent(*_curr_job_parents)
+                    job_files = []
+                    for j in _curr_job_parents:
+                        job_files.extend(output_files(j.id, j.attr('output'), j.vars.get('processes')))
+                    job.var(job_files=",".join(job_files))
+                f.input.data[str(job)] = (f, args, kwargs)
+                return job
+            f.queue = queue
+            return f
 
+        # case 1        
+        if func is None:
+            return decorate
+
+        # case 2, 3, 4
+        decorate(func)
+        return func
+    
 # Most users need only a single DAG
-dag = Dag(id='top', filebase=re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0])),
-          executable=sys.argv[0])
+dag = Dag(id='top', filename=re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))+'.dag')
 job = dag.job
-job_with = dag.job_with
-defaults = dag.defaults
 
-def write_dag():
+def write_dag_atexit():
     """
     Write out the default dag
     """
     if dag.nodes:
+        # (would like to do this only on normal termination, i.e. not
+        # if any exception was raised, including SystemExit)
         dag.write()
         print("Written DAG file to %s" % dag.filename, file=sys.stderr)
 
@@ -309,7 +451,7 @@ def parse_ad(filename):
 
 ads = {}
 
-def ad_attr(attr, env):
+def ad_attr(attr, env='_CONDOR_JOB_AD'):
     """Return a single classAd value"""
     if running():
         if env not in ads:
@@ -328,11 +470,11 @@ def read_job_output(id, filename, processes=None):
         if filename is None:
             return None
         elif processes is None:
-            with open(output_files(filename)[0], 'rb') as f:
+            with open(output_files(id, filename, None)[0], 'rb') as f:
                 return pickle.load(f)
         else:
             res = []
-            for fn in output_files(filename, processes):
+            for fn in output_files(id, filename, processes):
                 with open(fn, 'rb') as f:
                     res.append(pickle.load(f))
             return res
@@ -346,26 +488,27 @@ def invoke(job_data):
     write a backtrace to stderr and exit with a non-zero code, which is
     what we want for htcondor.
     """
-    func = job_data['func']
-    args = job_data['args']
-    kwargs = job_data['kwargs']
-
-    return func(*args, **kwargs)
+    (func, args, kwargs) = job_data
+    return func(*args, **kwargs)     # apply(*job_data) is deprecated
 
 def run(src=sys.stdin, dst=sys.stdout, output_none=False):
     if src.isatty():
         print('%s is non-interactive, requires a pickled argument set' % sys.argv[0], file=sys.stderr)
         sys.exit(1)
     else:
-        res = invoke(pickle.load(src))
+        job_name = re.sub(r'^.*\+','',ad_attr('DAGNodeName'))  # FIXME: use a command-line argument?
+        res = invoke(pickle.load(src)[job_name])
         if res is not None or output_none:
             pickle.dump(res, dst, pickle_protocol)
 
-def autorun(*args, **kwargs):
+def autorun(write_dag=True, *args, **kwargs):
     """
     Call this in your application after you have defined your functions,
     but before deciding what functions to queue. Then if the script is called
     as a htcondor job, it will just invoke the desired function.
+    
+    It also causes the top-level DAG to be written out when your program
+    terminates, unless you use autorun(write_dag=False)
     """
     if running():
         run(*args, **kwargs)
@@ -374,8 +517,9 @@ def autorun(*args, **kwargs):
         import pprint
         pprint.pprint(pickle.load(open(os.environ['UNPICKLE'], 'rb')))
         sys.exit(0)
-    import atexit
-    atexit.register(write_dag)
+    if write_dag:
+        import atexit
+        atexit.register(write_dag_atexit)
 
 # Another option is to set Executable = htcondor.py in submit file.
 # For this to work, when you write the dag file the functions must have

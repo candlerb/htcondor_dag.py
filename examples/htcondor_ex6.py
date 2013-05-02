@@ -1,27 +1,30 @@
 #!/usr/bin/env python
 import subprocess
-from htcondor import job_with, autorun, Dag, dag
+from htcondor import job, autorun, dag
 
-@job_with(output=None)
+@job(output=None)
 def bash(cmd):
+    subprocess.check_call(["/bin/bash","-c","set -o pipefail; " + cmd])
+
+diamond = dag.new_dag(id="DIAMOND", filename="diamond.dag")
+@diamond.job(output=None)
+def bash2(cmd):
     subprocess.check_call(["/bin/bash","-c","set -o pipefail; " + cmd])
 
 autorun()
 
 # http://research.cs.wisc.edu/htcondor/manual/v7.8/2_10DAGMan_Applications.html#SECTION003107900000000000000
 
-diamond = Dag(id="DIAMOND", filename="diamond.dag")
-a = diamond.create_job(id="A",func=bash).queue("echo A")
-b = diamond.create_job(id="B",func=bash).queue("echo B")
-c = diamond.create_job(id="C",func=bash).queue("echo C")
-d = diamond.create_job(id="D",func=bash).queue("echo D")
+a = bash2.queue("echo A")
+b = bash2.queue("echo B")
+c = bash2.queue("echo C")
+d = bash2.queue("echo D")
 a.child(b,c)
 d.parent(b,c)
 
 # splice into the normal top-level dag
-x = dag.create_job(id="X",func=bash).queue("echo X")
-y = dag.create_job(id="Y",func=bash).queue("echo Y")
-dag.add_node(diamond)
+x = bash.queue("echo X")
+y = bash.queue("echo Y")
 
 x.child(diamond)
 diamond.child(y)

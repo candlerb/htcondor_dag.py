@@ -9,5 +9,5 @@ def print_sum(a, b):
 
 autorun()
    
-print_sum.queue(1, 2) 
-print_sum.queue(3, 4)
+print_sum.queue(1, 2).var(output="res1.txt")
+print_sum.queue(3, 4).var(output="res2.txt")

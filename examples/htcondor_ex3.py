@@ -8,11 +8,11 @@ from htcondor import job, autorun, procid
 def adder(a, b):
     return a + b
 
-@job
+@job(output="result.txt")
 def printer(v):
     print repr(v)
 
 autorun()
 
-j1 = adder.job(processes=10).queue(procid, 5)
-printer.job(output="result.txt").queue(j1)
+j1 = adder.queue(procid, 5).var(processes=10)
+printer.queue(j1)

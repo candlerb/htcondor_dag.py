@@ -15,6 +15,8 @@ This example runs two instances of a job in parallel, with different
 arguments.
 
 ~~~
+from htcondor import job, autorun
+
 @job
 def print_sum(a, b):
     print a + b
@@ -26,18 +28,10 @@ print_sum.queue(3, 4)
 ~~~
 
 Make the script executable, and run it to create the DAG (this also creates
-the input files to each job):
+the input file with the queued arguments, and the submit file mytest.sub)
 
 ~~~
 ./mytest.py
-~~~
-
-You will need to create a minimal `htcondor.sub` like this:
-
-~~~
-universe = vanilla
-transfer_input_files = $(job_files)
-queue $(processes)
 ~~~
 
 Finally, run the DAG:
@@ -46,16 +40,18 @@ Finally, run the DAG:
 condor_submit_dag mytest.dag
 ~~~
 
-Monitor progress using `tail -f mytest.dag.dagman.out`.  The output will be
-written to files `mytest.job.0.out` and `mytest.job.1.out`.
+Monitor progress using `tail -f mytest.dag.dagman.out`, and
+`condor_q -run -dag`
+
+The output will be written to files `mytest.print_sum0.0.out` and
+`mytest.print_sum1.0.out`.
 
 Environment
 -----------
 
 `htcondor.py` (or at least the bits used by htcondor.autorun) needs to be
 available when the job runs.  You could install it on all the target nodes,
-but a simpler approach is to get htcondor to copy it for you, by changing
-the htcondor.sub file:
+but by default we get htcondor to copy it for you:
 
 ~~~
 transfer_input_files = htcondor.py,$(job_files)
@@ -69,6 +65,15 @@ transfer_input_files = htcondor.py,mylib.zip,$(job_files)
 environment = "PYTHONPATH=mylib.zip"
 ~~~
 
+You can get htcondor.py to write out the relevant entries for you:
+
+~~~
+from htcondor import Submit
+Submit.DEFAULTS['transfer_input_files'] = 'htcondor.py,mylib.zip,$(job_files)'
+Submit.DEFAULTS['environment'] = {"PYTHONPATH":"mylib.zip"}
+~~~
+
+
 Examining file contents
 -----------------------
 
@@ -76,7 +81,7 @@ Set the magic environment variable UNPICKLE to examine any of the htcondor
 job input files, or output files from jobs which generate pickled output.
 
 ~~~
-UNPICKLE="mytest.job.0.in" ./myprog.py
+UNPICKLE="mytest.myfunc.in" ./myprog.py
 ~~~
 
 Shell jobs
@@ -122,15 +127,25 @@ job_d.parent(job_b,job_c)
 Macros (VARS)
 -------------
 
+These can be set either for all jobs:
+
 ~~~
-job_a.job(state="Wisconsin",country="US").queue(...)
+@job(state="Wisconsin",country="US")
+def job_a(...):
+    ...
+~~~
+
+Or on individual instances:
+
+~~~
+job_a.queue(...).var(state="Wisconsin",country="US")
 ~~~
 
 There is some support for converting dicts or lists to macro values:
 
 ~~~
-job_a.job(environment={"PATH":"/usr/bin","TERMCAP":"vt100"}).queue(...)
-job_b.job(arguments=["foo","bar","baz"]).queue(...)
+job_a.var(environment={"PATH":"/usr/bin","TERMCAP":"vt100"})
+job_b.var(arguments=["foo","bar","baz"])
 ~~~
 
 However, for htcondor up to at least v7.8.7, dagman [does not allow the use
@@ -144,9 +159,9 @@ Jobs can be assigned to categories, and you can limit the number of
 jobs which will run concurrently in a particular category.
 
 ~~~
-from htcondor import job_with, autorun, dag
+from htcondor import job, autorun, dag
 
-@job_with(category="adder")
+@job(category="adder")
 def adder(a, b):
     return a + b
 
@@ -166,7 +181,7 @@ Per-job options
 On all instances of a job:
 
 ~~~
-@job_with(request_memory=100, submit='foobar.sub')
+@job(request_memory=100)
 def myjob(...):
     ....
 
@@ -177,7 +192,7 @@ To suppress generation of output from a job (e.g. one which writes
 all its output to a shared filesystem)
 
 ~~~
-@job_with(output=None)
+@job(output=None)
 def myjob(...):
     ....
 ~~~
@@ -185,7 +200,7 @@ def myjob(...):
 Options can also be set on an individual instance:
 
 ~~~
-myjob.job(request_memory=100,output="result.txt").queue(...)
+myjob.queue(...).var(request_memory=100,output="result.txt")
 ~~~
 
 Defaults for all jobs
@@ -193,11 +208,8 @@ Defaults for all jobs
 
 To set default VARS for every job:
 
-    from htcondor import defaults
-    defaults['request_memory'] = 200
-    defaults['submit'] = 'myjob.sub'
-
-(alternatively, you can edit the .sub file to include these parameters)
+    from htcondor import Submit
+    Submit.DEFAULTS['request_memory'] = 200
 
 To write the DAG to a different file:
 
@@ -239,7 +251,7 @@ Job clusters
 An HTCondor DAG node can submit a "cluster" of identical jobs:
 
 ~~~
-print_sum.job(processes=10).queue(1, 2)
+print_sum.queue(1,2).var(processes=10)
 ~~~
 
 You can pass the sentinel value `htcondor.procid` as an argument, and this
@@ -248,7 +260,7 @@ is expanded at run-time to the process number, between 0 and N-1.
 ~~~
 from htcondor import procid
 
-print_sum.job(processes=10).queue(procid, 5)   # outputs 5 to 14 inclusive
+print_sum.queue(procid, 5).var(processes=10)   # outputs 5 to 14 inclusive
 ~~~
 
 However, you should note that if any one job in a cluster fails, htcondor
@@ -267,11 +279,6 @@ for i in range(10):
 TODO
 ====
 
-* Try to show the DAG node name or the function name instead of the script
-  name in condor_q output
-* ? Collect all job arguments into a single file, to minimise the number
-  of .in files we generate (then we have to select the job name at
-  runtime, e.g. as a classAd attr or in arguments). But we will still end
-  up with separate .err files per job
 * Pre and Post scripts
 * Test suite
+* Make a local execution environment using multiprocess.Pool

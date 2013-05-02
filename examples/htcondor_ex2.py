@@ -5,11 +5,11 @@ from htcondor import job, autorun
 # third job waits for these jobs to complete, reads their values
 # and writes text output.
    
-@job
+@job(request_memory=200,output="result.txt")
 def print_sum(a, b):
     print a + b
 
-@job
+@job(request_memory=100)
 def adder(a, b):
     return a + b
     

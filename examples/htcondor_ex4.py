@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-from htcondor import job_with, autorun, dag
+from htcondor import job, autorun, dag
 
 # Limit the number of concurrent jobs which run in a particular category,
 # in this case only 3 at a time.
    
-@job_with(category="adder")
+@job(category="adder")
 def adder(a, b):
     return a + b
 
