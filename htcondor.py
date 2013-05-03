@@ -30,16 +30,6 @@ pickle_protocol = 0 # (or for binary) pickle.HIGHEST_PROTOCOL
 #
 ############################################################
 
-_curr_job_parents = sets.Set()
-
-def output_files(id, filename, processes=None):
-    """
-    Return a list of filenames of all the outputs for a job (cluster)
-    """
-    base = re.sub(r'\$\(jobname\)',str(id),filename,flags=re.IGNORECASE)
-    return [re.sub(r'\$\(process\)',str(p),base,flags=re.IGNORECASE)
-            for p in range(processes or 1)]
-
 class Input(object):
     """
     An object which writes out input arguments for one or more jobs
@@ -48,10 +38,10 @@ class Input(object):
         self.filename = filename
         self.data = {}           # {"jobname":(func,args,kwargs)}
         self.written = False
-    
+
     def __repr__(self):
         return "Input(filename=%s,data=%s)" % (repr(self.filename),repr(self.data))
-    
+
     def __str__(self):
         return self.filename
 
@@ -63,17 +53,16 @@ class Input(object):
             self.written = True
             with open(self.filename, "wb") as f:
                 pickle.dump(self.data, f, pickle_protocol)  # TODO: gzip
-    
+
 class Submit(object):
     """
     An object which writes out a submit file
     """
     DEFAULTS = {
         'universe': 'vanilla',
-        'executable': sys.argv[0],
-        'transfer_input_files': 'htcondor.py,$(job_files)'
+        'transfer_input_files': 'htcondor.py,$(job_files)',
     }
-    
+
     def __init__(self, filename, **vars):
         self.filename = filename
         self.vars = vars
@@ -126,7 +115,7 @@ class Node(object):
         self.comment = comment
         self.parents = []
         self.children = []
-    
+
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, repr(self.id))
 
@@ -139,7 +128,7 @@ class Node(object):
     def parent(self, *other):
         self.parents.extend(other)
         return self
-    
+
     def child(self, *other):
         self.children.extend(other)
         return self
@@ -156,11 +145,14 @@ class Node(object):
         if self.children:
             print("PARENT %s CHILD %s" %
                   (self, " ".join([str(o) for o in self.children])), file=file)
-    
+
 class Job(Node):
     """
     An instance of a job within a DAG
     """
+
+    _parent_jobs = sets.Set()
+
     def __init__(self, id, submit="htcondor.sub", comment=None,
                  category=None, priority=None, retry=None, **vars):
         super(Job, self).__init__(id=id, comment=comment)
@@ -169,13 +161,13 @@ class Job(Node):
         self.priority = priority
         self.retry = retry
         self.vars = vars
-    
+
     def write(self):
         if hasattr(self.submit, 'write'):
             self.submit.write()
         if 'input' in self.vars and hasattr(self.vars['input'], 'write'):
             self.vars['input'].write()
-    
+
     def write_dag_entry(self, file):
         self.write_dag_comment(file)
         print("JOB %s %s" % (self, self.submit), file=file)
@@ -189,7 +181,17 @@ class Job(Node):
         super(Job, self).write_dag_entry(file)
 
     def var(self, **v):
+        """Update one or more DAG variables"""
         self.vars.update(v)
+        return self
+
+    def processes(self, n):
+        """Mark a job as running a cluster of multiple processes"""
+        self.var(processes=n)
+        if 'output' in self.vars and self.vars['output'].find("$(process)") < 0:
+            self.vars['output'] += '.$(process)'
+        if 'error' in self.vars and self.vars['error'].find("$(process)") < 0:
+            self.vars['error'] += '.$(process)'
         return self
 
     def attr(self, varname):
@@ -206,8 +208,6 @@ class Job(Node):
             myjob.var(foo="bar", bar="qux")
         """
         res = ''
-        if 'jobname' not in vars:
-            res = ' jobname="%s"' % self   # or jobname="$(JOB)" but that includes dag splice path
         for (k,v) in sorted(vars.iteritems()):
             if re.match('queue', k, flags=re.IGNORECASE):
                 raise ValueError('macroname must not start with "queue"')
@@ -215,14 +215,14 @@ class Job(Node):
                 continue
             elif hasattr(v, 'iteritems'):
                 # e.g. environment={"PATH":"/usr/bin","HOME":"/home/job"}
-                v = " ".join(["%s=%s" % (x,re.sub("[ ']", '_', y))
+                v = " ".join(["%s=%s" % (x,re.sub("[ ']", '_', str(y)))
                               for (x,y) in v.iteritems()])
                 # Not yet permitted by DAGMAN:
                 #v = " ".join(["%s='%s'" % (x,y.replace("'","''"))
                 #              for (x,y) in v.iteritems()])
             elif type(v) is list:
                 # e.g. arguments=["foo", "bar", "baz"]
-                v = " ".join([re.sub("[ ']", '_', y) for y in v])
+                v = " ".join([re.sub("[ ']", '_', str(y)) for y in v])
                 # Not yet permitted by DAGMAN:
                 #v = " ".join(["'%s'" % y.replace("'","''") for y in v])
             v = str(v).replace('\\','\\\\').replace('"','\\"')
@@ -231,15 +231,37 @@ class Job(Node):
             print('VARS %s%s' % (self, res), file=file)
         return self
 
+    def set_function_data(self, func, args, kwargs, filebase='htcondor'):
+        # Does this job have any other Jobs in its args or kwargs?
+        Job._parent_jobs.clear()
+        pickle.dumps((args, kwargs), protocol=pickle_protocol)
+        # Add dependencies
+        if Job._parent_jobs:
+            self.parent(*Job._parent_jobs)
+            job_files = []
+            for j in Job._parent_jobs:
+                job_files.extend(output_files(j.id, j.attr('output'), j.vars.get('processes')))
+            self.var(job_files=",".join(job_files))
+        # We also need a separate input file for this job
+        if Job._parent_jobs or 'input' not in self.vars or self.vars['input'] is True or not hasattr(self.vars['input'],'data'):
+            self.vars['input'] = Input(filename="%s.%s.in" % (filebase, self))
+        # Finally store the function and args
+        self.vars['input'].data[str(self)] = (func, args, kwargs)
+        return self
+
     def __reduce__(self):
         """
         If this job is used as an argument to another job, then at depickle
         time we need to read the file(s) created by this job. Also add
         parents to the job currently being written.
         """
-        _curr_job_parents.add(self)
+        Job._parent_jobs.add(self)
         return (read_job_output,
                 (self.id, self.attr('output'), self.vars.get('processes')))
+
+filebase = re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))
+default_input = Input(filename=filebase+'.in')
+default_submit = 'htcondor.sub'
 
 class Dag(Node):
     """
@@ -289,7 +311,7 @@ class Dag(Node):
 
     def filebase(self):
         return re.sub(r'\.dag$', '', self.filename)
-    
+
     def new_node(self, cls, id=None, id_prefix="", **node_options):
         if id is None:
             id = self.next_id(id_prefix)
@@ -310,12 +332,11 @@ class Dag(Node):
         """
         return self.new_node(Dag, id=id, filename=filename, **options)
 
-    def job(self, func=None, name=None, input=True, output=True, error=True,
-            submit=True, category=None, priority=None, retry=None, **vars):
+    def job(self, func=None, id_prefix=None, input=None, submit=None, **vars):
         """
         Decorate a function so that func.queue(...) creates a condor job.
         This is the core functionality of this library.
-        
+
         # case 1: decorator with args
         @job(request_memory=1024)
         def myfunc(args):
@@ -325,57 +346,39 @@ class Dag(Node):
         @job
         def myfunc(args):
            ...
-        
+
         # case 3: myfunc already defined
         @job(myfunc)
 
         # case 4: myfunc already defined
         @job(myfunc, request_memory=1024)
 
-        Note: unless you pass input=<obj> or submit=<obj>, a new input
-        file and submit file respectively will be created. However
-        they will be shared between instances if you queue the
-        same function multiple times.
-        
+        Note: unless you pass input=<obj> or submit=<obj>, the default
+        input file and submit file respectively will be used. Hence these
+        will be shared between instances if you queue the same function
+        multiple times.
+
         Pass output=None or error=None if you wish to suppress generation
         of the stdout and stderr files.
         """
         def decorate(f):
-            _input = input
-            _output = output
-            _error = error
-            _submit = submit
-            filebase = "%s.%s" % (dag.filebase(), name or f.__name__)
-            if _input is True:
-                _input = Input(filebase+".in")
-            if _output is True:
-                _output="%s.$(jobname).$(process).out" % dag.filebase()
-            if _error is True:
-                _error="%s.$(jobname).$(process).err" % dag.filebase()
-            if _submit is True:
-                _submit = Submit(filename=filebase+".sub", input=_input,
-                                 output=_output, error=_error, **vars)
             f.dag = self
-            f.input = _input
-            f.submit = _submit
+            f.input = input or default_input
+            f.submit = submit or default_submit
             def queue(*args, **kwargs):
                 job = f.dag.new_job(
-                    id_prefix=f.__name__,
+                    id_prefix=id_prefix or f.__name__+'_',
+                    input=f.input,
                     submit=f.submit,
-                    category=category,
-                    priority=priority,
-                    retry=retry
+                    **vars
                 )
-                # Calculate dependencies
-                _curr_job_parents.clear()
-                pickle.dumps((args, kwargs), protocol=pickle_protocol)
-                if _curr_job_parents:
-                    job.parent(*_curr_job_parents)
-                    job_files = []
-                    for j in _curr_job_parents:
-                        job_files.extend(output_files(j.id, j.attr('output'), j.vars.get('processes')))
-                    job.var(job_files=",".join(job_files))
-                f.input.data[str(job)] = (f, args, kwargs)
+                if 'executable' not in vars:
+                    job.var(executable=sys.argv[0])
+                if 'output' not in vars:
+                    job.var(output='%s.%s.out' % (f.dag.filebase(), job))
+                if 'error' not in vars:
+                    job.var(error='%s.%s.err' % (f.dag.filebase(), job))
+                job.set_function_data(f, args, kwargs, f.dag.filebase())
                 return job
             f.queue = queue
             return f
@@ -387,9 +390,9 @@ class Dag(Node):
         # case 2, 3, 4
         decorate(func)
         return func
-    
-# Most users need only a single DAG
-dag = Dag(id='top', filename=re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))+'.dag')
+
+# Most users need only a single DAG and shared submit and input files
+dag = Dag(id='top', filename=filebase+'.dag')
 job = dag.job
 
 def write_dag_atexit():
@@ -408,7 +411,7 @@ class Ad(object):
     def __init__(self, attr, env='_CONDOR_JOB_AD'):
         self.attr = attr
         self.env = env
-    
+
     def __repr__(self):
         return "%s[%s]" % (self.env, self.attr)
 
@@ -460,6 +463,14 @@ def ad_attr(attr, env='_CONDOR_JOB_AD'):
     else:
         return Ad(attr, env)
 
+def output_files(id, filename, processes=None):
+    """
+    Return a list of filenames of all the outputs for a job (cluster)
+    """
+    base = re.sub(r'\$\(jobname\)',str(id),filename,flags=re.IGNORECASE)
+    return [re.sub(r'\$\(process\)',str(p),base,flags=re.IGNORECASE)
+            for p in range(processes or 1)]
+
 def read_job_output(id, filename, processes=None):
     """
     If job B uses the value of job A in its arguments, we have to read that
@@ -497,7 +508,10 @@ def run(src=sys.stdin, dst=sys.stdout, output_none=False):
         sys.exit(1)
     else:
         job_name = re.sub(r'^.*\+','',ad_attr('DAGNodeName'))  # FIXME: use a command-line argument?
-        res = invoke(pickle.load(src)[job_name])
+        data = pickle.load(src)
+        if job_name not in data:
+            raise KeyError("Job name '%s' not found in job input" % job_name)
+        res = invoke(data[job_name])
         if res is not None or output_none:
             pickle.dump(res, dst, pickle_protocol)
 
@@ -506,7 +520,7 @@ def autorun(write_dag=True, *args, **kwargs):
     Call this in your application after you have defined your functions,
     but before deciding what functions to queue. Then if the script is called
     as a htcondor job, it will just invoke the desired function.
-    
+
     It also causes the top-level DAG to be written out when your program
     terminates, unless you use autorun(write_dag=False)
     """

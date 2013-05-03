@@ -21,17 +21,25 @@ from htcondor import job, autorun
 def print_sum(a, b):
     print a + b
 
-autorun()
+autorun()   # at point where all functions have been defined
 
 print_sum.queue(1, 2)
 print_sum.queue(3, 4)
 ~~~
 
 Make the script executable, and run it to create the DAG (this also creates
-the input file with the queued arguments, and the submit file mytest.sub)
+the input file(s) for the jobs):
 
 ~~~
 ./mytest.py
+~~~
+
+You will need to create a minimal `htcondor.sub` like this:
+
+~~~
+universe = vanilla
+transfer_input_files = $(job_files)
+queue $(processes)
 ~~~
 
 Finally, run the DAG:
@@ -43,15 +51,16 @@ condor_submit_dag mytest.dag
 Monitor progress using `tail -f mytest.dag.dagman.out`, and
 `condor_q -run -dag`
 
-The output will be written to files `mytest.print_sum0.0.out` and
-`mytest.print_sum1.0.out`.
+The output will be written to files `mytest.print_sum_0.out` and
+`mytest.print_sum_1.out`.
 
 Environment
 -----------
 
 `htcondor.py` (or at least the bits used by htcondor.autorun) needs to be
 available when the job runs.  You could install it on all the target nodes,
-but by default we get htcondor to copy it for you:
+but a simpler approach is to get htcondor to copy it for you, by changing
+the htcondor.sub file:
 
 ~~~
 transfer_input_files = htcondor.py,$(job_files)
@@ -65,23 +74,16 @@ transfer_input_files = htcondor.py,mylib.zip,$(job_files)
 environment = "PYTHONPATH=mylib.zip"
 ~~~
 
-You can get htcondor.py to write out the relevant entries for you:
-
-~~~
-from htcondor import Submit
-Submit.DEFAULTS['transfer_input_files'] = 'htcondor.py,mylib.zip,$(job_files)'
-Submit.DEFAULTS['environment'] = {"PYTHONPATH":"mylib.zip"}
-~~~
-
-
 Examining file contents
 -----------------------
 
 Set the magic environment variable UNPICKLE to examine any of the htcondor
 job input files, or output files from jobs which generate pickled output.
+You need to re-run the same script which generates the dag (to ensure all
+the relevant classes are defined) but with this environment variable set.
 
 ~~~
-UNPICKLE="mytest.myfunc.in" ./myprog.py
+UNPICKLE="mytest.in" ./myprog.py
 ~~~
 
 Shell jobs
@@ -107,8 +109,27 @@ j2 = bash.queue("foo </nfs/i2 | bar >/nfs/o2")
 j3 = bash.queue("baz /nfs/o1 /nfs/o2 >/nfs/out").parent(j1, j2)
 ~~~
 
+Pre-existing functions
+----------------------
+
+If the function you want to queue is defined in a different file, you can
+decorate it without modifying the source file by calling `job(func, **opts)`
+
+~~~
+from htcondor import job, autorun
+import foo
+
+job(foo.bar, request_memory=1024)
+autorun()
+
+foo.bar.queue('/tmp/foo','/tmp/bar')
+~~~
+
 DAG features
 ============
+
+The return value of queue(...) is a Job object instance. You can call
+methods on this instance to alter the attributes of the job.
 
 Parent/child
 ------------
@@ -130,15 +151,7 @@ Macros (VARS)
 These can be set either for all jobs:
 
 ~~~
-@job(state="Wisconsin",country="US")
-def job_a(...):
-    ...
-~~~
-
-Or on individual instances:
-
-~~~
-job_a.queue(...).var(state="Wisconsin",country="US")
+a.queue(...).var(state="Wisconsin",country="US")
 ~~~
 
 There is some support for converting dicts or lists to macro values:
@@ -206,15 +219,24 @@ myjob.queue(...).var(request_memory=100,output="result.txt")
 Defaults for all jobs
 ---------------------
 
-To set default VARS for every job:
+To set default VARS for every job, edit the .sub file to contain them.
 
-    from htcondor import Submit
-    Submit.DEFAULTS['request_memory'] = 200
+You can point any job to another submit file:
 
-To write the DAG to a different file:
+~~~
+@job(submit='foo.sub')
+def foo(...):
+    ....
+~~~
 
-    from htcondor import dag
-    dag.filename = "foo.dag"
+There is also a helper object which can write submit files for you.
+
+~~~
+s = Submit(filename="foo.sub", request_memory=1024)
+@job(submit=s)
+def foo(...):
+    ....
+~~~
 
 Returning python values (experimental)
 ======================================
@@ -280,5 +302,10 @@ TODO
 ====
 
 * Pre and Post scripts
+* Other job and subdag attributes
 * Test suite
 * Make a local execution environment using multiprocess.Pool
+* We could simplify DAG if the submit file had
+    output=htcondor.$(jobname).out
+    error=htcondor.$(jobname).err
+  but that would mean having to parse the existing submit file

@@ -14,5 +14,5 @@ def printer(v):
 
 autorun()
 
-j1 = adder.queue(procid, 5).var(processes=10)
+j1 = adder.queue(procid, 5).processes(10)
 printer.queue(j1)
