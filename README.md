@@ -306,6 +306,7 @@ TODO
 * Test suite
 * Make a local execution environment using multiprocess.Pool
 * We could simplify DAG if the submit file had
+    input=htcondor.in
     output=htcondor.$(jobname).out
     error=htcondor.$(jobname).err
   but that would mean having to parse the existing submit file

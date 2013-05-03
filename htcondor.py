@@ -19,7 +19,6 @@ from __future__ import print_function
 import sys
 import os
 import re
-import sets
 import pickle
 
 pickle_protocol = 0 # (or for binary) pickle.HIGHEST_PROTOCOL
@@ -113,8 +112,8 @@ class Node(object):
     def __init__(self, id, comment=None):
         self.id = id
         self.comment = comment
-        self.parents = []
-        self.children = []
+        self.parents = set()
+        self.children = set()
 
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, repr(self.id))
@@ -126,11 +125,11 @@ class Node(object):
         return self.id
 
     def parent(self, *other):
-        self.parents.extend(other)
+        self.parents.update(other)
         return self
 
     def child(self, *other):
-        self.children.extend(other)
+        self.children.update(other)
         return self
 
     def write_dag_comment(self, file):
@@ -151,7 +150,7 @@ class Job(Node):
     An instance of a job within a DAG
     """
 
-    _parent_jobs = sets.Set()
+    _parent_jobs = set()
 
     def __init__(self, id, submit="htcondor.sub", comment=None,
                  category=None, priority=None, retry=None, **vars):
@@ -273,7 +272,7 @@ class Dag(Node):
         self.filename = filename
         self.dir = dir
         self.maxjobs = {}           # category => limit
-        self.nodes = []
+        self.nodes = []             # (list not set: must preserve order)
         self.last_id = {}           # id_prefix => sequence number
         self.written = False
 
