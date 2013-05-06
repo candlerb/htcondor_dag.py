@@ -19,9 +19,9 @@ from __future__ import print_function
 import sys
 import os
 import re
-import pickle
+import cPickle
 
-pickle_protocol = 0 # (or for binary) pickle.HIGHEST_PROTOCOL
+pickle_protocol = cPickle.HIGHEST_PROTOCOL
 
 ############################################################
 #
@@ -51,7 +51,7 @@ class Input(object):
         if self.data and not self.written:
             self.written = True
             with open(self.filename, "wb") as f:
-                pickle.dump(self.data, f, pickle_protocol)  # TODO: gzip
+                cPickle.dump(self.data, f, pickle_protocol)  # TODO: gzip
 
 class Submit(object):
     """
@@ -233,7 +233,7 @@ class Job(Node):
     def set_function_data(self, func, args, kwargs, filebase='htcondor'):
         # Does this job have any other Jobs in its args or kwargs?
         Job._parent_jobs.clear()
-        pickle.dumps((args, kwargs), protocol=pickle_protocol)
+        cPickle.dumps((args, kwargs), protocol=pickle_protocol)
         # Add dependencies
         if Job._parent_jobs:
             self.parent(*Job._parent_jobs)
@@ -481,12 +481,12 @@ def read_job_output(id, filename, processes=None):
             return None
         elif processes is None:
             with open(output_files(id, filename, None)[0], 'rb') as f:
-                return pickle.load(f)
+                return cPickle.load(f)
         else:
             res = []
             for fn in output_files(id, filename, processes):
                 with open(fn, 'rb') as f:
-                    res.append(pickle.load(f))
+                    res.append(cPickle.load(f))
             return res
     else:
         return Job(id=id, output=filename, processes=processes)
@@ -507,12 +507,12 @@ def run(src=sys.stdin, dst=sys.stdout, output_none=False):
         sys.exit(1)
     else:
         job_name = re.sub(r'^.*\+','',ad_attr('DAGNodeName'))  # FIXME: use a command-line argument?
-        data = pickle.load(src)
+        data = cPickle.load(src)
         if job_name not in data:
             raise KeyError("Job name '%s' not found in job input" % job_name)
         res = invoke(data[job_name])
         if res is not None or output_none:
-            pickle.dump(res, dst, pickle_protocol)
+            cPickle.dump(res, dst, pickle_protocol)
 
 def autorun(write_dag=True, *args, **kwargs):
     """
@@ -528,7 +528,7 @@ def autorun(write_dag=True, *args, **kwargs):
         sys.exit(0)
     elif 'UNPICKLE' in os.environ:
         import pprint
-        pprint.pprint(pickle.load(open(os.environ['UNPICKLE'], 'rb')))
+        pprint.pprint(cPickle.load(open(os.environ['UNPICKLE'], 'rb')))
         sys.exit(0)
     if write_dag:
         import atexit
