@@ -7,7 +7,7 @@ from htcondor import job, autorun, dag
 def print_sum(a, b):
     print a + b
 
-autorun()
+autorun(report_hostname=True)
    
 print_sum.queue(1, 2).var(output="res1.txt")
 print_sum.queue(3, 4).var(output="res2.txt")
