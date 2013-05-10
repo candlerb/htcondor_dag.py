@@ -533,7 +533,7 @@ def autorun(write_dag=True, report_hostname=False, remove_error=False, *args, **
     if running():
         if report_hostname:
             import socket
-            print("CONDOR: Running on %s" % socket.gethostname(), file=sys.stderr)
+            print("HTCONDOR: Running on %s" % socket.gethostname(), file=sys.stderr)
         run(*args, **kwargs)
         if remove_error:
             try:
