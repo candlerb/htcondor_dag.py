@@ -514,7 +514,7 @@ def run(src=sys.stdin, dst=sys.stdout, output_none=False):
         if res is not None or output_none:
             cPickle.dump(res, dst, pickle_protocol)
 
-def autorun(write_dag=True, *args, **kwargs):
+def autorun(write_dag=True, remove_error=False, *args, **kwargs):
     """
     Call this in your application after you have defined your functions,
     but before deciding what functions to queue. Then if the script is called
@@ -522,9 +522,17 @@ def autorun(write_dag=True, *args, **kwargs):
 
     It also causes the top-level DAG to be written out when your program
     terminates, unless you use autorun(write_dag=False)
+    
+    If you pass remove_error=True then the stderr file is removed if the
+    function terminates normally. This is to avoid clutter at the submit node.
     """
     if running():
         run(*args, **kwargs)
+        if remove_error:
+            try:
+                os.unlink(ad_attr('Err'))
+            except KeyError, OSError:
+                pass
         sys.exit(0)
     elif 'UNPICKLE' in os.environ:
         import pprint
