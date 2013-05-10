@@ -14,7 +14,7 @@ Basic operation
 This example runs two instances of a job in parallel, with different
 arguments.
 
-~~~
+~~~{.python}
 from htcondor import job, autorun
 
 @job
@@ -83,7 +83,7 @@ You need to re-run the same script which generates the dag (to ensure all
 the relevant classes are defined) but with this environment variable set.
 
 ~~~
-UNPICKLE="mytest.in" ./myprog.py
+UNPICKLE="mytest.in" ./mytest.py
 ~~~
 
 Shell jobs
@@ -148,7 +148,16 @@ job_d.parent(job_b,job_c)
 Macros (VARS)
 -------------
 
-These can be set either for all jobs:
+These can be set either as defaults on a function:
+
+~~~
+@job(state="Wisconsin",country="US")
+def a(...):
+   ...
+~~~
+
+Or for individual job instances, which can either add to or override the
+defaults.
 
 ~~~
 a.queue(...).var(state="Wisconsin",country="US")
