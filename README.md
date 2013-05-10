@@ -30,7 +30,7 @@ print_sum.queue(3, 4)
 Make the script executable, and run it to create the DAG (this also creates
 the input file(s) for the jobs):
 
-~~~
+~~~{.bash}
 ./mytest.py
 ~~~
 
@@ -44,7 +44,7 @@ queue $(processes)
 
 Finally, run the DAG:
 
-~~~
+~~~{.bash}
 condor_submit_dag mytest.dag
 ~~~
 
@@ -82,7 +82,7 @@ job input files, or output files from jobs which generate pickled output.
 You need to re-run the same script which generates the dag (to ensure all
 the relevant classes are defined) but with this environment variable set.
 
-~~~
+~~~{.bash}
 UNPICKLE="mytest.in" ./mytest.py
 ~~~
 
@@ -93,7 +93,7 @@ Although the examples so far have shown trivial computation, htcondor.py
 also makes it very convenient to marshal collections of shell jobs and
 define their dependencies.
 
-~~~
+~~~{.python}
 #!/usr/bin/env python
 import subprocess
 from htcondor import job, autorun
@@ -115,7 +115,7 @@ Pre-existing functions
 If the function you want to queue is defined in a different file, you can
 decorate it without modifying the source file by calling `job(func, **opts)`
 
-~~~
+~~~{.python}
 from htcondor import job, autorun
 import foo
 
@@ -136,7 +136,7 @@ Parent/child
 
 This is the [diamond-shaped DAG example](http://research.cs.wisc.edu/htcondor/manual/current/2_10DAGMan_Applications.html#SECTION003102000000000000000)
 
-~~~
+~~~{.python}
 job_a = a.queue(...)
 job_b = b.queue(...)
 job_c = c.queue(...)
@@ -150,7 +150,7 @@ Macros (VARS)
 
 These can be set either as defaults on a function:
 
-~~~
+~~~{.python}
 @job(state="Wisconsin",country="US")
 def a(...):
    ...
@@ -159,13 +159,13 @@ def a(...):
 Or for individual job instances, which can either add to or override the
 defaults.
 
-~~~
+~~~{.python}
 a.queue(...).var(state="Wisconsin",country="US")
 ~~~
 
 There is some support for converting dicts or lists to macro values:
 
-~~~
+~~~{.python}
 job_a.var(environment={"PATH":"/usr/bin","TERMCAP":"vt100"})
 job_b.var(arguments=["foo","bar","baz"])
 ~~~
@@ -180,7 +180,7 @@ Categories
 Jobs can be assigned to categories, and you can limit the number of
 jobs which will run concurrently in a particular category.
 
-~~~
+~~~{.python}
 from htcondor import job, autorun, dag
 
 @job(category="adder")
@@ -202,7 +202,7 @@ Per-job options
 
 On all instances of a job:
 
-~~~
+~~~{.python}
 @job(request_memory=100)
 def myjob(...):
     ....
@@ -213,7 +213,7 @@ myjob.queue(...)
 To suppress generation of output from a job (e.g. one which writes
 all its output to a shared filesystem)
 
-~~~
+~~~{.python}
 @job(output=None)
 def myjob(...):
     ....
@@ -221,7 +221,7 @@ def myjob(...):
 
 Options can also be set on an individual instance:
 
-~~~
+~~~{.python}
 myjob.queue(...).var(request_memory=100,output="result.txt")
 ~~~
 
@@ -232,7 +232,7 @@ To set default VARS for every job, edit the .sub file to contain them.
 
 You can point any job to another submit file:
 
-~~~
+~~~{.python}
 @job(submit='foo.sub')
 def foo(...):
     ....
@@ -240,7 +240,7 @@ def foo(...):
 
 There is also a helper object which can write submit files for you.
 
-~~~
+~~~{.python}
 s = Submit(filename="foo.sub", request_memory=1024)
 @job(submit=s)
 def foo(...):
@@ -250,7 +250,7 @@ def foo(...):
 Returning python values (experimental)
 ======================================
 
-~~~
+~~~{.python}
 @job
 def adder(a, b):
     return a + b
@@ -263,7 +263,7 @@ value of None to be written using `autorun(output_none=True)`
 The values which are output from one job can be used as the input to another
 job:
 
-~~~
+~~~{.python}
 j1 = adder.queue(1, 2)
 j2 = adder.queue(3, 4)
 j3 = print_sum.queue(j1, j2)
@@ -281,14 +281,14 @@ Job clusters
 
 An HTCondor DAG node can submit a "cluster" of identical jobs:
 
-~~~
+~~~{.python}
 print_sum.queue(1,2).var(processes=10)
 ~~~
 
 You can pass the sentinel value `htcondor.procid` as an argument, and this
 is expanded at run-time to the process number, between 0 and N-1.
 
-~~~
+~~~{.python}
 from htcondor import procid
 
 print_sum.queue(procid, 5).var(processes=10)   # outputs 5 to 14 inclusive
@@ -302,7 +302,7 @@ beginning.
 If you want to be able to restart individual failed jobs, you need to submit
 them as separate jobs, and if necessary declare the dependencies explicitly.
 
-~~~
+~~~{.python}
 for i in range(10):
     print_sum.queue(i, 5)
 ~~~
