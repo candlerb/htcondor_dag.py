@@ -514,7 +514,7 @@ def run(src=sys.stdin, dst=sys.stdout, output_none=False):
         if res is not None or output_none:
             cPickle.dump(res, dst, pickle_protocol)
 
-def autorun(write_dag=True, report_hostname=False, remove_error=False, *args, **kwargs):
+def autorun(write_dag=True, report_hostname=False, *args, **kwargs):
     """
     Call this in your application after you have defined your functions,
     but before deciding what functions to queue. Then if the script is called
@@ -526,20 +526,12 @@ def autorun(write_dag=True, report_hostname=False, remove_error=False, *args, **
     If you pass report_hostname=True then a line is written to stderr saying
     the name of the host where the job is run. This can be useful to pin
     down problems with a particular server.
-    
-    If you pass remove_error=True then the stderr file is removed if the
-    function terminates normally. This is to avoid clutter at the submit node.
     """
     if running():
         if report_hostname:
             import socket
             print("HTCONDOR: Running on %s" % socket.gethostname(), file=sys.stderr)
         run(*args, **kwargs)
-        if remove_error:
-            try:
-                os.unlink(ad_attr('Err'))
-            except KeyError, OSError:
-                pass
         sys.exit(0)
     elif 'UNPICKLE' in os.environ:
         import pprint
