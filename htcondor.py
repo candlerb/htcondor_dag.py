@@ -98,7 +98,7 @@ class Submit(object):
                         v = " ".join(["%s='%s'" % (x,str(y).replace("'","''"))
                                       for (x,y) in v.iteritems()])
                         v = '"%s"' % v.replace('"','""')
-                    elif type(v) is list:
+                    elif isinstance(v, list):
                         # e.g. arguments=["foo", "bar", "baz"]
                         v = " ".join(["'%s'" % str(y).replace("'","''") for y in v])
                         v = '"%s"' % v.replace('"','""')
@@ -150,15 +150,20 @@ class Job(Node):
     An instance of a job within a DAG
     """
 
+    OPTIONS = {
+        "data":		"DATA",
+        "script_pre":	"SCRIPT PRE",
+        "script_post":	"SCRIPT POST",
+        "retry":	"RETRY",
+        "abort_dag_on":	"ABORT-DAG-ON",
+        "priority":	"PRIORITY",
+        "category":	"CATEGORY",
+    }
     _parent_jobs = set()
 
-    def __init__(self, id, submit="htcondor.sub", comment=None,
-                 category=None, priority=None, retry=None, **vars):
+    def __init__(self, id, submit="htcondor.sub", comment=None, **vars):
         super(Job, self).__init__(id=id, comment=comment)
         self.submit = submit
-        self.category = category
-        self.priority = priority
-        self.retry = retry
         self.vars = vars
 
     def write(self):
@@ -170,12 +175,6 @@ class Job(Node):
     def write_dag_entry(self, file):
         self.write_dag_comment(file)
         print("JOB %s %s" % (self, self.submit), file=file)
-        if self.category is not None:
-            print("CATEGORY %s %s" % (self, self.category), file=file)
-        if self.priority is not None:
-            print("PRIORITY %s %d" % (self, self.priority), file=file)
-        if self.retry is not None:
-            print("RETRY %s %d" % (self, self.retry), file=file)
         self.write_vars(file, self.vars)
         super(Job, self).write_dag_entry(file)
 
@@ -208,10 +207,18 @@ class Job(Node):
         """
         res = ''
         for (k,v) in sorted(vars.iteritems()):
-            if re.match('queue', k, flags=re.IGNORECASE):
-                raise ValueError('macroname must not start with "queue"')
-            elif v is None:
+            if v is None:
                 continue
+            elif k in Job.OPTIONS:
+                if isinstance(v, list):
+                    for vv in v:
+                        print('%s %s %s' % (Job.OPTIONS[k], self, str(vv)),
+                              file=file)
+                else:
+                    print('%s %s %s' % (Job.OPTIONS[k], self, str(v)),
+                          file=file)
+            elif re.match('queue', k, flags=re.IGNORECASE):
+                raise ValueError('macroname must not start with "queue"')
             elif hasattr(v, 'iteritems'):
                 # e.g. environment={"PATH":"/usr/bin","HOME":"/home/job"}
                 v = " ".join(["%s=%s" % (x,re.sub("[ ']", '_', str(y)))
@@ -219,7 +226,7 @@ class Job(Node):
                 # Not yet permitted by DAGMAN:
                 #v = " ".join(["%s='%s'" % (x,y.replace("'","''"))
                 #              for (x,y) in v.iteritems()])
-            elif type(v) is list:
+            elif isinstance(v, list):
                 # e.g. arguments=["foo", "bar", "baz"]
                 v = " ".join([re.sub("[ ']", '_', str(y)) for y in v])
                 # Not yet permitted by DAGMAN:
@@ -267,13 +274,13 @@ class Dag(Node):
     A Dag is a collection of nodes (jobs or sub-dags). It also allocates
     node ids.
     """
-    def __init__(self, id, filename, comment=None, dir=None, maxjobs = {}):
+    def __init__(self, id, filename, comment=None, dir=None, maxjobs=None):
         super(Dag, self).__init__(id=id, comment=comment)
         self.filename = filename
         self.dir = dir
-        self.maxjobs = {}           # category => limit
-        self.nodes = []             # (list not set: must preserve order)
-        self.last_id = {}           # id_prefix => sequence number
+        self.maxjobs = maxjobs or {} # category => limit
+        self.nodes = []              # (list, not set: must preserve order)
+        self.last_id = {}            # id_prefix => sequence number
         self.written = False
 
     def next_id(self, id_prefix=""):

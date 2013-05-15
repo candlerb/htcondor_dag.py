@@ -310,8 +310,7 @@ for i in range(10):
 TODO
 ====
 
-* Pre and Post scripts
-* Other job and subdag attributes
+* dag-level options (e.g. DOT)
 * Test suite
 * Make a local execution environment using multiprocess.Pool
 * We could simplify DAG if the submit file had
