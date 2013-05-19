@@ -542,7 +542,14 @@ def autorun(write_dag=True, report_hostname=False, *args, **kwargs):
         sys.exit(0)
     elif 'UNPICKLE' in os.environ:
         import pprint
-        pprint.pprint(cPickle.load(open(os.environ['UNPICKLE'], 'rb')))
+        data = cPickle.load(open(os.environ['UNPICKLE'], 'rb'))
+        if len(sys.argv) > 1:
+            jobid = sys.argv[1]
+            if jobid not in data:
+                print("Job '%s' not in input" % jobid, file=sys.stderr)
+                sys.exit(1)
+            data = data[jobid]
+        pprint.pprint(data)
         sys.exit(0)
     if write_dag:
         import atexit

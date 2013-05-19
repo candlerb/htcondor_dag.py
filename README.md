@@ -83,7 +83,7 @@ You need to re-run the same script which generates the dag (to ensure all
 the relevant classes are defined) but with this environment variable set.
 
 ~~~{.bash}
-UNPICKLE="mytest.in" ./mytest.py
+UNPICKLE="mytest.in" ./mytest.py [jobid]
 ~~~
 
 Shell jobs
