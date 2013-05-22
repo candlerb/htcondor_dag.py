@@ -217,6 +217,7 @@ class Job(Node):
                 else:
                     print('%s %s %s' % (Job.OPTIONS[k], self, str(v)),
                           file=file)
+                continue
             elif re.match('queue', k, flags=re.IGNORECASE):
                 raise ValueError('macroname must not start with "queue"')
             elif hasattr(v, 'iteritems'):

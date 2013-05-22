@@ -2,12 +2,12 @@
 import subprocess
 from htcondor import job, autorun, dag
 
-@job(output=None)
+@job(output=None, retry=1)
 def bash(cmd):
     subprocess.check_call(["/bin/bash","-c","set -o pipefail; " + cmd])
 
 diamond = dag.new_dag(id="DIAMOND", filename="diamond.dag")
-@diamond.job(output=None)
+@diamond.job(output=None, retry=1)
 def bash2(cmd):
     subprocess.check_call(["/bin/bash","-c","set -o pipefail; " + cmd])
 
