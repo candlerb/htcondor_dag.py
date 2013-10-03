@@ -22,6 +22,7 @@ import re
 import cPickle
 
 pickle_protocol = cPickle.HIGHEST_PROTOCOL
+default_submit = 'htcondor.sub'
 
 ############################################################
 #
@@ -161,9 +162,9 @@ class Job(Node):
     }
     _parent_jobs = set()
 
-    def __init__(self, id, submit="htcondor.sub", comment=None, **vars):
+    def __init__(self, id, submit=None, comment=None, **vars):
         super(Job, self).__init__(id=id, comment=comment)
-        self.submit = submit
+        self.submit = submit or default_submit
         self.vars = vars
 
     def write(self):
@@ -266,20 +267,19 @@ class Job(Node):
         return (read_job_output,
                 (self.id, self.attr('output'), self.vars.get('processes')))
 
-filebase = re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))
-default_input = Input(filename=filebase+'.in')
-default_submit = 'htcondor.sub'
-
 class Dag(Node):
     """
     A Dag is a collection of nodes (jobs or sub-dags). It also allocates
     node ids.
     """
-    def __init__(self, id, filename, comment=None, dir=None, maxjobs=None):
+    def __init__(self, id, filename, comment=None, dir=None, maxjobs=None,
+                 submit=None, input=None):
         super(Dag, self).__init__(id=id, comment=comment)
         self.filename = filename
         self.dir = dir
         self.maxjobs = maxjobs or {} # category => limit
+        self.submit = submit
+        self.input = input
         self.nodes = []              # (list, not set: must preserve order)
         self.last_id = {}            # id_prefix => sequence number
         self.written = False
@@ -326,12 +326,15 @@ class Dag(Node):
         self.nodes.append(node)
         return node
 
-    def new_job(self, id=None, submit='htcondor.sub', **options):
+    def new_job(self, id=None, input=None, submit=None, **options):
         """
         Create a job object and add it to this DAG. Pass either
         id or id_prefix; the latter will allocate an id sequentially.
         """
-        return self.new_node(Job, id=id, submit=submit, **options)
+        return self.new_node(Job, id=id,
+                             input=(input or self.input),
+                             submit=(submit or self.submit),
+                             **options)
 
     def new_dag(self, id, filename, **options):
         """
@@ -370,13 +373,13 @@ class Dag(Node):
         """
         def decorate(f):
             f.dag = self
-            f.input = input or default_input
-            f.submit = submit or default_submit
+            f.input = input
+            f.submit = submit
             def queue(*args, **kwargs):
                 job = f.dag.new_job(
                     id_prefix=id_prefix or f.__name__+'_',
-                    input=f.input,
-                    submit=f.submit,
+                    input=f.input,   # will use DAG default if not set
+                    submit=f.submit, # will use DAG default if not set
                     **vars
                 )
                 if 'executable' not in vars:
@@ -399,8 +402,11 @@ class Dag(Node):
         return func
 
 # Most users need only a single DAG and shared submit and input files
-dag = Dag(id='top', filename=filebase+'.dag')
+filebase = re.sub(r'\.pyc?$', '', os.path.basename(sys.argv[0]))
+dag = Dag(id='top', filename=filebase+'.dag',
+          input=Input(filename=filebase+'.in'))
 job = dag.job
+default_input = dag.input
 
 def write_dag_atexit():
     """
