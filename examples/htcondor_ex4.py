@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from htcondor import job, autorun, dag
+from htcondor_dag import job, autorun, dag
 
 # Limit the number of concurrent jobs which run in a particular category,
 # in this case only 3 at a time.

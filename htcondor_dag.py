@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# htcondor.py: distributed python using a HTCondor DAG
+# htcondor_dag.py: distributed python using a HTCondor DAG
 # Copyright (C) 2013 Brian Candler
 #
 # This program is free software; you can redistribute it and/or
@@ -60,7 +60,7 @@ class Submit(object):
     """
     DEFAULTS = {
         'universe': 'vanilla',
-        'transfer_input_files': 'htcondor.py,$(job_files)',
+        'transfer_input_files': 'htcondor_dag.py,$(job_files)',
     }
 
     def __init__(self, filename, **vars):
@@ -562,7 +562,7 @@ def autorun(write_dag=True, report_hostname=False, *args, **kwargs):
         import atexit
         atexit.register(write_dag_atexit)
 
-# Another option is to set Executable = htcondor.py in submit file.
+# Another option is to set Executable = htcondor_dag.py in submit file.
 # For this to work, when you write the dag file the functions must have
 # been imported from a different module, not implicitly __main__
 if __name__ == '__main__':

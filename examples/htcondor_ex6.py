@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import subprocess
-from htcondor import job, autorun, dag
+from htcondor_dag import job, autorun, dag
 
 @job(output=None, retry=1)
 def bash(cmd):

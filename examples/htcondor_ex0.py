@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from htcondor import dag
+from htcondor_dag import dag
 
 # This is the simple diamond-shaped DAG example
 a = dag.new_job('A','A.condor',comment="This is node A")

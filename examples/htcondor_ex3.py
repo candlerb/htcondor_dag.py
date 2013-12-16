@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from htcondor import job, autorun, procid
+from htcondor_dag import job, autorun, procid
 
 # First we run a cluster of jobs, each of which returns a value.
 # Then we run another job which prints all the results from the cluster.

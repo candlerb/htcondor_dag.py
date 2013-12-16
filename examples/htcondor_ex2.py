@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from htcondor import job, autorun
+from htcondor_dag import job, autorun
 
 # Two jobs write a python value to their output file; the
 # third job waits for these jobs to complete, reads their values

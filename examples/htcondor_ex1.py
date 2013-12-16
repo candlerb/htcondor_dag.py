@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from htcondor import job, autorun, dag
+from htcondor_dag import job, autorun, dag
 
 # Two jobs, each writes text to its output file
    

@@ -1,7 +1,7 @@
 Overview
 ========
 
-htcondor.py turns python functions into
+htcondor_dag.py turns python functions into
 [HTCondor](http://research.cs.wisc.edu/htcondor/) jobs.  It writes out a
 DAG (Directed Acyclic Graph) defining the individual jobs and their dependencies, ready for
 [submission] (http://research.cs.wisc.edu/htcondor/manual/current/condor_submit_dag.html)
@@ -15,7 +15,7 @@ This example runs two instances of a job in parallel, with different
 arguments.
 
 ~~~{.python}
-from htcondor import job, autorun
+from htcondor_dag import job, autorun
 
 @job
 def print_sum(a, b):
@@ -34,7 +34,7 @@ the input file(s) for the jobs):
 ./mytest.py
 ~~~
 
-You will need to create a minimal `htcondor.sub` like this:
+You will need to create a minimal `htcondor_dag.sub` like this:
 
 ~~~
 universe = vanilla
@@ -57,20 +57,20 @@ The output will be written to files `mytest.print_sum_0.out` and
 Environment
 -----------
 
-`htcondor.py` (or at least the bits used by htcondor.autorun) needs to be
+`htcondor_dag.py` (or at least the bits used by htcondor.autorun) needs to be
 available when the job runs.  You could install it on all the target nodes,
 but a simpler approach is to get htcondor to copy it for you, by changing
-the htcondor.sub file:
+the htcondor_dag.sub file:
 
 ~~~
-transfer_input_files = htcondor.py,$(job_files)
+transfer_input_files = htcondor_dag.py,$(job_files)
 ~~~
 
 If your python app is split into modules then you can transfer them all
 together in a zipfile:
 
 ~~~
-transfer_input_files = htcondor.py,mylib.zip,$(job_files)
+transfer_input_files = htcondor_dag.py,mylib.zip,$(job_files)
 environment = "PYTHONPATH=mylib.zip"
 ~~~
 
@@ -89,14 +89,14 @@ UNPICKLE="mytest.in" ./mytest.py [jobid]
 Shell jobs
 ----------
 
-Although the examples so far have shown trivial computation, htcondor.py
+Although the examples so far have shown trivial computation, htcondor_dag.py
 also makes it very convenient to marshal collections of shell jobs and
 define their dependencies.
 
 ~~~{.python}
 #!/usr/bin/env python
 import subprocess
-from htcondor import job, autorun
+from htcondor_dag import job, autorun
 
 @job
 def bash(cmd):
@@ -116,7 +116,7 @@ If the function you want to queue is defined in a different file, you can
 decorate it without modifying the source file by calling `job(func, **opts)`
 
 ~~~{.python}
-from htcondor import job, autorun
+from htcondor_dag import job, autorun
 import foo
 
 job(foo.bar, request_memory=1024)
@@ -181,7 +181,7 @@ Jobs can be assigned to categories, and you can limit the number of
 jobs which will run concurrently in a particular category.
 
 ~~~{.python}
-from htcondor import job, autorun, dag
+from htcondor_dag import job, autorun, dag
 
 @job(category="adder")
 def adder(a, b):
@@ -289,7 +289,7 @@ You can pass the sentinel value `htcondor.procid` as an argument, and this
 is expanded at run-time to the process number, between 0 and N-1.
 
 ~~~{.python}
-from htcondor import procid
+from htcondor_dag import procid
 
 print_sum.queue(procid, 5).var(processes=10)   # outputs 5 to 14 inclusive
 ~~~
