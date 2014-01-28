@@ -22,7 +22,7 @@ import re
 import cPickle
 
 pickle_protocol = cPickle.HIGHEST_PROTOCOL
-default_submit = 'htcondor.sub'
+default_submit = 'htcondor_dag.sub'
 
 ############################################################
 #

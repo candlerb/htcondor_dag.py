@@ -57,7 +57,7 @@ The output will be written to files `mytest.print_sum_0.out` and
 Environment
 -----------
 
-`htcondor_dag.py` (or at least the bits used by htcondor.autorun) needs to be
+`htcondor_dag.py` (or at least the bits used by htcondor_dag.autorun) needs to be
 available when the job runs.  You could install it on all the target nodes,
 but a simpler approach is to get htcondor to copy it for you, by changing
 the htcondor_dag.sub file:
@@ -285,7 +285,7 @@ An HTCondor DAG node can submit a "cluster" of identical jobs:
 print_sum.queue(1,2).var(processes=10)
 ~~~
 
-You can pass the sentinel value `htcondor.procid` as an argument, and this
+You can pass the sentinel value `htcondor_dag.procid` as an argument, and this
 is expanded at run-time to the process number, between 0 and N-1.
 
 ~~~{.python}
