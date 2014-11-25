@@ -1,9 +1,15 @@
 *~
+*.old
 *.pyc
 *.dag
+*.sub
 *.in
 *.out
 *.err
 *.condor.sub
 *.log
 *.rescue???
+*.metrics
+*,cover
+.coverage
+__pycache__

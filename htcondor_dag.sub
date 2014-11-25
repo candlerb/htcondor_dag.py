@@ -1,3 +1,0 @@
-universe = vanilla
-transfer_input_files = htcondor_dag.py,$(job_files)
-queue $(processes)

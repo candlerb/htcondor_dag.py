@@ -1,20 +1,24 @@
 #!/usr/bin/env python
-from htcondor_dag import job, autorun
+from htcondor_dag import Dag, autorun
 
 # Two jobs write a python value to their output file; the
 # third job waits for these jobs to complete, reads their values
 # and writes text output.
-   
-@job(request_memory=200,output="result.txt")
+
+
 def print_sum(a, b):
     print a + b
 
-@job(request_memory=100)
 def adder(a, b):
     return a + b
-    
+
 autorun()
-   
-j1 = adder.queue(1, 2) 
-j2 = adder.queue(3, 4)
-j3 = print_sum.queue(j1, j2)
+
+dag = Dag('htcondor_ex2')
+d_print_sum = dag.defer(print_sum, request_memory=200, output="result.txt")
+d_adder = dag.defer(adder, request_memory=100)
+
+j1 = d_adder(1, 2)
+j2 = d_adder(3, 4)
+j3 = d_print_sum(j1, j2)
+dag.write()
