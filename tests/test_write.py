@@ -34,42 +34,21 @@ JOB qux test.sub
     assert "test.in" not in mockfs.files
     assert "test.sub" in mockfs.files
 
-def test_write_default_filenames(dag, mockfs):
-    dag.job("foo", "foo.sub", output=True)
-    dag.job("bar", "xyz.sub", input="wibble.txt", error=True)
-    dag.job("qux", "qux.sub", input=True)
-    dag.write()
-
-    assert mockfs["test.dag"] == """
-JOB foo foo.sub
-VARS foo output="foo.out"
-
-JOB bar xyz.sub
-VARS bar error="bar.err" input="wibble.txt"
-
-JOB qux qux.sub
-VARS qux input="qux.in"
-"""
-
-    # Neither of these jobs needed to write the dag input file
-    assert "test.in" not in mockfs.files
-    assert "test.sub" not in mockfs.files
-
 def test_write_processes(dag, mockfs):
-    dag.job("foo", "foo.sub", output=True, processes=5)
-    dag.job("bar", "xyz.sub", input="wibble.txt", error=True, processes=10)
-    dag.job("qux", "qux.sub", input=True, processes=15)
+    dag.job("foo", "foo.sub", output="test.foo.out", processes=5)
+    dag.job("bar", "xyz.sub", input="wibble.txt", error="test.bar.err", processes=10)
+    dag.job("qux", "qux.sub", input="test.qux.in", processes=15)
     dag.write()
 
     assert mockfs["test.dag"] == """
 JOB foo foo.sub
-VARS foo output="foo.out.$(process)" processes="5"
+VARS foo output="test.foo.out.$(process)" processes="5"
 
 JOB bar xyz.sub
-VARS bar error="bar.err.$(process)" input="wibble.txt" processes="10"
+VARS bar error="test.bar.err.$(process)" input="wibble.txt" processes="10"
 
 JOB qux qux.sub
-VARS qux input="qux.in.$(process)" processes="15"
+VARS qux input="test.qux.in" processes="15"
 """
 
 def test_defer(dag, mockfs):
@@ -80,11 +59,11 @@ def test_defer(dag, mockfs):
 
     assert mockfs["test.dag"] == """
 JOB foo_0 test.sub
-VARS foo_0 error="foo_0.err" input="test.in" output="foo_0.out"
+VARS foo_0 error="test.foo_0.err" input="test.in" output="test.foo_0.out"
 
 JOB foo_1 test.sub
 RETRY foo_1 2
-VARS foo_1 error="foo_1.err" input="test.in" output="foo_1.out" request_memory="123"
+VARS foo_1 error="test.foo_1.err" input="test.in" output="test.foo_1.out" request_memory="123"
 """
 
     args = cPickle.loads(mockfs["test.in"])
@@ -109,13 +88,13 @@ def test_defer_input_output_error_none(dag, mockfs):
 
     assert mockfs["test.dag"] == """
 JOB foo_0 test.sub
-VARS foo_0 error="foo_0.err" input="foo_0.in" output="foo_0.out"
+VARS foo_0 error="test.foo_0.err" input="test.foo_0.in" output="test.foo_0.out"
 
 JOB foo_1 test.sub
-VARS foo_1 error="foo_1.err" input="test.in"
+VARS foo_1 error="test.foo_1.err" input="test.in"
 
 JOB foo_2 test.sub
-VARS foo_2 input="test.in" output="foo_2.out"
+VARS foo_2 input="test.in" output="test.foo_2.out"
 """
 
 def test_dir(dag, mockfs):
@@ -127,11 +106,11 @@ def test_dir(dag, mockfs):
 
     assert mockfs["test.dag"] == """
 JOB foo_0 test.sub NOOP
-VARS foo_0 error="foo_0.err" input="test.in" output="foo_0.out"
+VARS foo_0 error="test.foo_0.err" input="test.in" output="test.foo_0.out"
 
 JOB foo_1 test.sub DIR wibble
-VARS foo_1 error="foo_1.err" input="test.in" output="foo_1.out"
+VARS foo_1 error="test.foo_1.err" input="test.in" output="test.foo_1.out"
 
 JOB foo_2 test.sub DIR bibble NOOP
-VARS foo_2 error="foo_2.err" input="test.in" output="foo_2.out"
+VARS foo_2 error="test.foo_2.err" input="test.in" output="test.foo_2.out"
 """

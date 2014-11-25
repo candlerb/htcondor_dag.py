@@ -44,8 +44,8 @@ condor_submit_dag mytest.dag
 Monitor progress using `tail -f mytest.dag.dagman.out`, and
 `condor_q -run -dag`
 
-The output will be written to files `print_sum_0.out` and
-`print_sum_1.out`.
+The output will be written to files `mytest.print_sum_0.out` and
+`mytest.print_sum_1.out`.
 
 Environment
 -----------

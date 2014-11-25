@@ -8,8 +8,8 @@ def test_job_getitem():
     """
     foo = htcondor_dag.Submit("foo.sub", request_memory=123)
     j0 = htcondor_dag.Job("j0")
-    j1 = htcondor_dag.Job("j1", submit="xyz.sub", output=True)
-    j2 = htcondor_dag.Job("j2", submit=foo, output=True, processes=5)
+    j1 = htcondor_dag.Job("j1", submit="xyz.sub", output="j1.out")
+    j2 = htcondor_dag.Job("j2", submit=foo, output="j2.out", processes=5)
     j3 = htcondor_dag.Job("j3", submit="xyz.sub", request_memory=456)
     j4 = htcondor_dag.Job("j4", submit=foo, request_memory=789)
 

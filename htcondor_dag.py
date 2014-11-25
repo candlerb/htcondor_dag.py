@@ -163,11 +163,6 @@ class Job(Node):
         "priority":	"PRIORITY",
         "category":	"CATEGORY",
     }
-    MAP_EXT = {
-        "input":	"in",
-        "output":	"out",
-        "error":	"err",
-    }
     _parent_jobs = set()
 
     def __init__(self, id, submit=None, comment=None, dir=None, noop=False, **vars):
@@ -217,8 +212,7 @@ class Job(Node):
         else:
             raise KeyError("'%s' not present in job %s" % (varname, self))
 
-        if v is True and varname in Job.MAP_EXT:
-            v = "%s.%s" % (self, Job.MAP_EXT[varname])
+        if varname in ["output", "error"]:
             if self.vars.get('processes', 1) > 1 and v.find("$(process)") < 0:
                 v += '.$(process)'
 
@@ -263,7 +257,7 @@ class Job(Node):
             print('VARS %s%s' % (self, res), file=file)
         return self
 
-    def set_function_data(self, func, args, kwargs):
+    def set_function_data(self, func, args, kwargs, dag):
         # Does this job have any other Jobs in its args or kwargs?
         Job._parent_jobs.clear()
         cPickle.dumps((args, kwargs), protocol=pickle_protocol)
@@ -276,7 +270,7 @@ class Job(Node):
             self.var(input_files=",".join(sorted(input_files)))
         # We also need a separate input file for this job
         if Job._parent_jobs or 'input' not in self.vars or not hasattr(self.vars['input'],'data'):
-            self.vars['input'] = Input(filename="%s.in" % self)
+            self.vars['input'] = Input(filename="%s.%s.in" % (dag.id, self))
         # Finally store the function and args
         self.vars['input'].data[str(self)] = (func, args, kwargs)
         return self
@@ -390,10 +384,10 @@ class Dag(Node):
             if 'input' not in job.vars:
                 job.var(input=dag.input) # default to dag's shared input file
             if 'output' not in job.vars:
-                job.var(output=True)
+                job.var(output='%s.%s.out' % (dag.id, job.id))
             if 'error' not in job.vars:
-                job.var(error=True)
-            job.set_function_data(func, args, kwargs)
+                job.var(error='%s.%s.err' % (dag.id, job.id))
+            job.set_function_data(func, args, kwargs, dag)
             return job
 
         if func is not None:

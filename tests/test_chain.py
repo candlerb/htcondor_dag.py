@@ -22,13 +22,13 @@ def test_chain(dag, mockfs):
 
     assert mockfs["test.dag"] == """
 JOB adder_0 test.sub
-VARS adder_0 error="adder_0.err" input="test.in" output="adder_0.out" request_memory="100"
+VARS adder_0 error="test.adder_0.err" input="test.in" output="test.adder_0.out" request_memory="100"
 
 JOB adder_1 test.sub
-VARS adder_1 error="adder_1.err" input="test.in" output="adder_1.out" request_memory="100"
+VARS adder_1 error="test.adder_1.err" input="test.in" output="test.adder_1.out" request_memory="100"
 
 JOB print_sum_0 test.sub
-VARS print_sum_0 error="print_sum_0.err" input="print_sum_0.in" input_files="adder_0.out,adder_1.out" output="print_sum_0.out" request_memory="200"
+VARS print_sum_0 error="test.print_sum_0.err" input="test.print_sum_0.in" input_files="test.adder_0.out,test.adder_1.out" output="test.print_sum_0.out" request_memory="200"
 PARENT adder_0 adder_1 CHILD print_sum_0
 """
 
@@ -38,7 +38,7 @@ PARENT adder_0 adder_1 CHILD print_sum_0
         "adder_1": (adder, (3,4), {}),
     }
 
-    args = cPickle.loads(mockfs["print_sum_0.in"])
+    args = cPickle.loads(mockfs["test.print_sum_0.in"])
     assert args["print_sum_0"][0] == print_sum
     assert isinstance(args["print_sum_0"][1][0], htcondor_dag.Job)
     assert isinstance(args["print_sum_0"][1][1], htcondor_dag.Job)
