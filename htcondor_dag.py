@@ -112,9 +112,10 @@ class Node(object):
     """
     Parent class for nodes within a DAG (jobs and sub-DAGs)
     """
-    def __init__(self, id, comment=None):
+    def __init__(self, id, comment=None, dir=None):
         self.id = id
         self.comment = comment
+        self.dir = dir
         self.parents = set()
         self.children = set()
 
@@ -169,9 +170,10 @@ class Job(Node):
     }
     _parent_jobs = set()
 
-    def __init__(self, id, submit=None, comment=None, **vars):
-        super(Job, self).__init__(id=id, comment=comment)
+    def __init__(self, id, submit=None, comment=None, dir=None, noop=False, **vars):
+        super(Job, self).__init__(id=id, comment=comment, dir=dir)
         self.submit = submit or id+".sub"
+        self.noop = noop
         self.vars = vars
 
     def write(self):
@@ -188,7 +190,12 @@ class Job(Node):
         Write this job's entry in the containing DAG
         """
         self.write_dag_header(file)
-        print("JOB %s %s" % (self, self.submit), file=file)
+        line = "JOB %s %s" % (self, self.submit)
+        if self.dir:
+            line += " DIR %s" % self.dir
+        if self.noop:
+            line += " NOOP"
+        print(line, file=file)
         self.write_vars(file=file)
         self.write_dag_footer(file)
 
@@ -291,9 +298,8 @@ class Dag(Node):
     """
     def __init__(self, id, filename=None, comment=None, dir=None, maxjobs=None,
                  submit=None, input=None):
-        super(Dag, self).__init__(id=id, comment=comment)
+        super(Dag, self).__init__(id=id, comment=comment, dir=dir)
         self.filename = filename or (id + '.dag')
-        self.dir = dir
         self.maxjobs = maxjobs or {} # category => limit
         self.submit = submit or Submit(filename=id+".sub", **DEFAULT_SUBMIT_VARS)
         self.input = input or Input(filename=id+".in")
@@ -330,10 +336,10 @@ class Dag(Node):
 
     def write_dag_entry(self, file):
         self.write_dag_header(file)
+        line = "SPLICE %s %s" % (self.id, self.filename)
         if self.dir:
-            print("SPLICE %s %s DIR %s" % (self.id, self.filename, self.dir), file=file)
-        else:
-            print("SPLICE %s %s" % (self.id, self.filename), file=file)
+            line += " DIR %s" % self.dir
+        print(line, file=file)
         self.write_dag_footer(file)
 
     def node(self, cls, id=None, id_prefix="", **node_options):

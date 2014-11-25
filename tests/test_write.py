@@ -117,3 +117,21 @@ VARS foo_1 error="foo_1.err" input="test.in"
 JOB foo_2 test.sub
 VARS foo_2 input="test.in" output="foo_2.out"
 """
+
+def test_dir(dag, mockfs):
+
+    dag.defer(foo, noop=True)(100)
+    dag.defer(foo, dir='wibble')(200)
+    dag.defer(foo, noop=True, dir='bibble')(300)
+    dag.write()
+
+    assert mockfs["test.dag"] == """
+JOB foo_0 test.sub NOOP
+VARS foo_0 error="foo_0.err" input="test.in" output="foo_0.out"
+
+JOB foo_1 test.sub DIR wibble
+VARS foo_1 error="foo_1.err" input="test.in" output="foo_1.out"
+
+JOB foo_2 test.sub DIR bibble NOOP
+VARS foo_2 error="foo_2.err" input="test.in" output="foo_2.out"
+"""
