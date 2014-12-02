@@ -114,3 +114,18 @@ VARS foo_1 error="test.foo_1.err" input="test.in" output="test.foo_1.out"
 JOB foo_2 test.sub DIR bibble NOOP
 VARS foo_2 error="test.foo_2.err" input="test.in" output="test.foo_2.out"
 """
+
+def test_dag_with_config(dag, mockfs):
+    dag.defer(foo, noop=True)(100)
+    dag.config["DAGMAN_MUNGE_NODE_NAMES"] = False
+
+    dag.write()
+
+    assert mockfs["test.dag"] == """CONFIG test.config
+
+JOB foo_0 test.sub NOOP
+VARS foo_0 error="test.foo_0.err" input="test.in" output="test.foo_0.out"
+"""
+
+    assert mockfs["test.config"] == """DAGMAN_MUNGE_NODE_NAMES = False
+"""

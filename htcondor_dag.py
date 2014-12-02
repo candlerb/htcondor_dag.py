@@ -291,12 +291,13 @@ class Dag(Node):
     node ids.
     """
     def __init__(self, id, filename=None, comment=None, dir=None, maxjobs=None,
-                 submit=None, input=None):
+                 submit=None, input=None, config={}):
         super(Dag, self).__init__(id=id, comment=comment, dir=dir)
         self.filename = filename or (id + '.dag')
         self.maxjobs = maxjobs or {} # category => limit
         self.submit = submit or Submit(filename=id+".sub", **DEFAULT_SUBMIT_VARS)
         self.input = input or Input(filename=id+".in")
+        self.config = config
         self.nodes = []              # (list, not set: must preserve order)
         self.last_id = {}            # id_prefix => sequence number
         self.written = False
@@ -322,6 +323,11 @@ class Dag(Node):
         if not self.written:
             self.written = True
             with open(self.filename, "w") as f:
+                if self.config:
+                    print("CONFIG %s.config" % self.id, file=f)
+                    with open("%s.config" % self.id, "w") as cf:
+                        for (k,v) in self.config.iteritems():
+                            print("%s = %s" % (k,v), file=cf)
                 for node in self.nodes:
                     node.write()
                     node.write_dag_entry(file=f)
