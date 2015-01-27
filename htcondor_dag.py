@@ -390,9 +390,9 @@ class Dag(Node):
             if 'input' not in job.vars:
                 job.var(input=dag.input) # default to dag's shared input file
             if 'output' not in job.vars:
-                job.var(output='%s.%s.out' % (dag.id, job.id))
+                job.var(output='$(JOB).out')
             if 'error' not in job.vars:
-                job.var(error='%s.%s.err' % (dag.id, job.id))
+                job.var(error='$(JOB).err')
             job.set_function_data(func, args, kwargs, dag)
             return job
 
@@ -544,7 +544,9 @@ def autorun(report_hostname=True, *args, **kwargs):
 
 # Another option is to set Executable = htcondor_dag.py in submit file.
 # For this to work, when you write the dag file the functions must have
-# been imported from a different module, not implicitly __main__
+# been imported from a different module, not implicitly __main__. Note
+# also that the executable is renamed to "condor_exec.exe", so other
+# code will not see htcondor_dag.py and hence cannot import htcondor_dag
 if __name__ == '__main__':
     run()
     sys.exit(0)
