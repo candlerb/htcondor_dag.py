@@ -1,4 +1,7 @@
-import cPickle
+try:
+    import cPickle as pickle
+except:
+    import pickle
 import htcondor_dag
 
 def adder(a,b): return a+b
@@ -32,13 +35,13 @@ VARS print_sum_0 error="test.print_sum_0.err" input="test.print_sum_0.in" input_
 PARENT adder_0 adder_1 CHILD print_sum_0
 """
 
-    args = cPickle.loads(mockfs["test.in"])
+    args = pickle.loads(mockfs["test.in"])
     assert args == {
         "adder_0": (adder, (1,2), {}),
         "adder_1": (adder, (3,4), {}),
     }
 
-    args = cPickle.loads(mockfs["test.print_sum_0.in"])
+    args = pickle.loads(mockfs["test.print_sum_0.in"])
     assert args["print_sum_0"][0] == print_sum
     assert isinstance(args["print_sum_0"][1][0], htcondor_dag.Job)
     assert isinstance(args["print_sum_0"][1][1], htcondor_dag.Job)

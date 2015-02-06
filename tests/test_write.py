@@ -1,4 +1,7 @@
-import cPickle
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 def foo(a): pass
 
@@ -66,7 +69,7 @@ RETRY foo_1 2
 VARS foo_1 error="test.foo_1.err" input="test.in" output="test.foo_1.out" request_memory="123"
 """
 
-    args = cPickle.loads(mockfs["test.in"])
+    args = pickle.loads(mockfs["test.in"])
     assert args == {
         "foo_0": (foo, (100,), {}),
         "foo_1": (foo, (), {"a":200}),
