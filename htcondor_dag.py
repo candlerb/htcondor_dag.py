@@ -393,9 +393,9 @@ class Dag(Node):
             if 'input' not in job.vars:
                 job.var(input=dag.input) # default to dag's shared input file
             if 'output' not in job.vars:
-                job.var(output='$(JOB).out')
+                job.var(output='%s.%s.out' % (dag.id, job.id))
             if 'error' not in job.vars:
-                job.var(error='$(JOB).err')
+                job.var(error='%s.%s.err' % (dag.id, job.id))
             job.set_function_data(func, args, kwargs, dag)
             return job
 
