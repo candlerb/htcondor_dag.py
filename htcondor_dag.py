@@ -166,7 +166,6 @@ class Job(Node):
         "priority":	"PRIORITY",
         "category":	"CATEGORY",
     }
-    _parent_jobs = set()
 
     def __init__(self, id, submit=None, comment=None, dir=None, noop=False, **vars):
         super(Job, self).__init__(id=id, comment=comment, dir=dir)
@@ -262,17 +261,15 @@ class Job(Node):
 
     def set_function_data(self, func, args, kwargs, dag):
         # Does this job have any other Jobs in its args or kwargs?
-        Job._parent_jobs.clear()
-        pickle.dumps((args, kwargs), protocol=pickle_protocol)
-        # Add dependencies
-        if Job._parent_jobs:
-            self.parent(*Job._parent_jobs)
-            input_files = []
-            for j in Job._parent_jobs:
+        input_files = []
+        for j in list(args) + kwargs.values():
+            if isinstance(j, Job):
+                self.parent(j)
                 input_files.extend(output_files(j.id, j['output'], j.vars.get('processes')))
+        if input_files:
             self.var(input_files=",".join(sorted(input_files)))
         # We also need a separate input file for this job
-        if Job._parent_jobs or 'input' not in self.vars or not hasattr(self.vars['input'],'data'):
+        if input_files or 'input' not in self.vars or not hasattr(self.vars['input'],'data'):
             self.vars['input'] = Input(filename="%s.%s.in" % (dag.id, self))
         # Finally store the function and args
         self.vars['input'].data[str(self)] = (func, args, kwargs)
@@ -281,10 +278,8 @@ class Job(Node):
     def __reduce__(self):
         """
         If this job is used as an argument to another job, then at depickle
-        time we need to read the file(s) created by this job. Also add
-        parents to the job currently being written.
+        time we need to read the file(s) created by this job.
         """
-        Job._parent_jobs.add(self)
         return (read_job_output,
                 (self.id, self['output'], self.vars.get('processes')))
 
